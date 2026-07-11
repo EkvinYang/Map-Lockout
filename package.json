@@ -1,17 +1,12 @@
 {
-  "name": "map-lockout",
+  "name": "kinetic-tracker",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Phone velocity and angular yaw tracking web application",
+  "main": "index.html",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "npx http-server -p 8080"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "dependencies": {
-    "express": "^5.2.1",
-    "socket.io": "^4.8.3"
-  }
+  "license": "ISC"
 }
