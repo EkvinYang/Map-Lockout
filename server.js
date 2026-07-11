@@ -428,7 +428,9 @@ io.on('connection', (socket) => {
       io.to(roomCode).emit('golf-state-update', {
         golfState: gs,
         playerId: socket.id,
-        swings: player.swings
+        swings: player.swings,
+        distance,
+        heading
       });
       
       setTimeout(() => endGame(roomCode, 'golf-finished'), 2000);
@@ -436,7 +438,9 @@ io.on('connection', (socket) => {
       io.to(roomCode).emit('golf-state-update', {
         golfState: gs,
         playerId: socket.id,
-        swings: player.swings
+        swings: player.swings,
+        distance,
+        heading
       });
     }
   });

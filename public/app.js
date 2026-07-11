@@ -83,7 +83,6 @@ const scoreMeMini = document.getElementById('score-me-mini');
 const scoreOppMini = document.getElementById('score-opp-mini');
 const hudScoreDividerMini = document.getElementById('hud-score-divider-mini');
 // Conquest indicators removed
-const hudGolfScoreLeft = document.getElementById('hud-golf-score-left');
 const golfSwingsDisplay = document.getElementById('golf-swings');
 const swingWrapper = document.getElementById('swing-wrapper');
 const btnSwingAction = document.getElementById('btn-swing-action');
@@ -162,7 +161,12 @@ function showEventBanner(message, type = 'system') {
   if (type === 'opponent') emoji = '🚨';
   if (type === 'system') emoji = '⚙️';
 
-  banner.innerHTML = `<span>${emoji}</span> <span>${message}</span>`;
+  let emojiHtml = `<span>${emoji}</span> `;
+  if (message.includes('BALL HIT')) {
+    emojiHtml = '';
+  }
+
+  banner.innerHTML = `${emojiHtml}<span>${message}</span>`;
   eventFeed.appendChild(banner);
 
   // Slide out and remove after 4 seconds
@@ -285,10 +289,11 @@ socket.on('golf-state-update', (data) => {
   
   if (golfBallMarker && map) {
     const newPos = [currentGolfState.ballLat, currentGolfState.ballLng];
-    // Simple transition animation by moving it smoothly 
-    // For simplicity, just setLatLng with transition (Leaflet handles it instantly, but we can do a micro-animation if needed, or just set it)
     golfBallMarker.setLatLng(newPos);
-    showEventBanner(`Golf ball hit!`, 'system');
+    
+    const roundedStrength = Math.round(data.distance || 0);
+    const roundedBearing = Math.round(data.heading || 0);
+    showEventBanner(`BALL HIT! Strength: ${roundedStrength}%, Bearing: ${roundedBearing}°`, 'system');
   }
 });
 
@@ -301,8 +306,8 @@ btnSwingAction.addEventListener('click', () => {
     swingState = 'WAITING';
     peakAccel = 0;
     peakYaw = 0;
-    btnSwingAction.innerHTML = 'WAITING FOR SWING...';
-    btnSwingAction.style.background = '#6b21a8'; // Purple
+    btnSwingAction.innerHTML = 'SWING';
+    btnSwingAction.classList.add('swing-active');
     btnSwingAction.style.pointerEvents = 'none'; // Prevent double clicking
   }
 });
@@ -345,8 +350,6 @@ window.addEventListener('devicemotion', (event) => {
       swingStartTime = performance.now();
       peakAccel = accelMagnitude;
       peakYaw = myHeading;
-      btnSwingAction.innerHTML = 'RECORDING!';
-      btnSwingAction.style.background = '#06b6d4'; // Cyan
     }
   } else if (swingState === 'RECORDING') {
     const elapsed = performance.now() - swingStartTime;
@@ -358,8 +361,8 @@ window.addEventListener('devicemotion', (event) => {
     } else {
       // Finished recording
       swingState = 'IDLE';
-      btnSwingAction.innerHTML = '🏌️‍♂️ SWING';
-      btnSwingAction.style.background = '';
+      btnSwingAction.innerHTML = 'SWING';
+      btnSwingAction.classList.remove('swing-active');
       btnSwingAction.style.pointerEvents = 'auto';
       
       const distance = peakAccel * 1.0;

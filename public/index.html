@@ -118,22 +118,17 @@
   <!-- ================= ACTIVE GAME SCREEN ================= -->
   <div id="game-screen" class="screen">
 
-    <!-- HUD Overlay Top: Scores & Timers -->
-    <div class="game-overlay hud-top">
-      <!-- Left: Golf Scoreboard (Shown by default) -->
-      <div class="score-panel-left" id="hud-golf-score-left">
-        <span class="score-lbl-compact">Swings Taken</span>
-        <div class="scoreboard-display" style="justify-content: center;">
-          <span id="golf-swings" class="score-val me">0</span>
+    <!-- HUD Overlay Top: Combined Swings & Timer (Top-Center) -->
+    <div class="game-overlay hud-top-combined">
+      <div class="combined-hud-panel">
+        <div class="hud-item-combined">
+          <span class="hud-label-combined">Swings</span>
+          <span id="golf-swings" class="hud-val-combined me">0</span>
         </div>
-      </div>
-      
-      <!-- Right: Timer Container -->
-      <div class="timer-container">
-        <!-- Timer Panel -->
-        <div class="timer-panel">
-          <span id="game-timer" class="time-val">05:00</span>
-          <span class="time-lbl">Time Left</span>
+        <div class="hud-divider-combined"></div>
+        <div class="hud-item-combined">
+          <span class="hud-label-combined">Time Left</span>
+          <span id="game-timer" class="hud-val-combined timer-val-color">05:00</span>
         </div>
       </div>
     </div>
@@ -147,8 +142,8 @@
     <!-- HUD Overlay Bottom: Proximity indicators and center button -->
     <div class="game-overlay hud-bottom">
       <div class="bottom-card">
-        <!-- Lockout Mode HUD Details -->
-        <div class="hud-row" id="lockout-hud-row">
+        <!-- HUD Details Row -->
+        <div class="hud-row" style="width: 100%;">
           <div class="hud-details">
             <div class="hud-detail-item">
               <span class="hud-detail-label">GPS Accuracy</span>
@@ -159,27 +154,12 @@
               <span id="gps-timestamp-display" class="hud-detail-val">--</span>
             </div>
             <div class="hud-detail-item" style="border-left: 1px solid var(--glass-border); padding-left: 15px;">
-              <span id="proximity-label" class="hud-detail-label">Nearest Building</span>
-              <span id="nearest-building-name" class="hud-detail-val" style="line-height: 1.4;">None Nearby</span>
+              <span class="hud-detail-label">Dist. to Ball</span>
+              <span id="dist-to-ball-display" class="hud-detail-val">--</span>
             </div>
-          </div>
-          
-          <div id="proximity-container" class="proximity-indicator" style="display: none;">
-            <div id="proximity-dot" class="proximity-pulse"></div>
-            <span id="proximity-text">In Range</span>
-          </div>
-        </div>
-
-        <!-- Golf Mode HUD Details -->
-        <div class="hud-row" id="golf-hud-row" style="display: none; width: 100%;">
-          <div class="hud-details" style="width: 100%; justify-content: space-around; gap: 0;">
-            <div class="hud-detail-item" style="flex: 1; text-align: center;">
-              <span class="hud-detail-label" style="font-size: 0.8rem; letter-spacing: 0.5px;">Dist. to Ball</span>
-              <span id="dist-to-ball-display" class="hud-detail-val" style="font-size: 1.4rem; font-weight: 700; margin-top: 4px;">--</span>
-            </div>
-            <div class="hud-detail-item" style="border-left: 1px solid var(--glass-border); flex: 1; text-align: center;">
-              <span class="hud-detail-label" style="font-size: 0.8rem; letter-spacing: 0.5px;">Dist. to Hole</span>
-              <span id="dist-to-hole-display" class="hud-detail-val" style="font-size: 1.4rem; font-weight: 700; margin-top: 4px;">--</span>
+            <div class="hud-detail-item" style="border-left: 1px solid var(--glass-border); padding-left: 15px;">
+              <span class="hud-detail-label">Dist. to Hole</span>
+              <span id="dist-to-hole-display" class="hud-detail-val">--</span>
             </div>
           </div>
         </div>
@@ -192,10 +172,16 @@
       </div>
     </div>
 
+    <!-- Proximity Tip Box (Walk to Ball / Ball Reached) - Fixed top-right overlay -->
+    <div id="proximity-container" class="proximity-indicator" style="display: none;">
+      <div id="proximity-dot" class="proximity-pulse"></div>
+      <span id="proximity-text">In Range</span>
+    </div>
+
     <!-- Golf Swing Button Overlay -->
     <div class="btn-swing-wrapper" id="swing-wrapper">
       <button class="btn btn-warning-glow" id="btn-swing-action" style="font-size: 1.5rem; padding: 15px 40px; border-radius: 30px;">
-        🏌️‍♂️ SWING
+        SWING
       </button>
     </div>
   </div>
