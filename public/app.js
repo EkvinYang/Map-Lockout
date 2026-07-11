@@ -90,6 +90,16 @@ const golfSwingsDisplay = document.getElementById('golf-swings');
 const swingWrapper = document.getElementById('swing-wrapper');
 const btnSwingAction = document.getElementById('btn-swing-action');
 
+// IMU Swing Variables
+let swingState = 'IDLE'; // 'IDLE', 'WAITING', 'RECORDING'
+let peakAccel = 0;
+let peakYaw = 0;
+let swingStartTime = 0;
+const SWING_RECORDING_MS = 1000;
+const SWING_ACCEL_THRESHOLD = 10.0;
+let gravity = { x: 0, y: 0, z: 0 };
+let gravityInitialized = false;
+
 // Game Over Dialog Elements
 const dialogOverlay = document.getElementById('dialog-overlay');
 const dialogHeaderTitle = document.getElementById('dialog-header-title');
@@ -319,8 +329,80 @@ socket.on('golf-state-update', (data) => {
 
 btnSwingAction.addEventListener('click', () => {
   if (currentGameMode === 'golf') {
-    socket.emit('golf-swing');
-    swingWrapper.classList.remove('active'); // Hide instantly to prevent double-swings
+    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+      DeviceMotionEvent.requestPermission().catch(console.error);
+    }
+
+    swingState = 'WAITING';
+    peakAccel = 0;
+    peakYaw = 0;
+    btnSwingAction.innerHTML = 'WAITING FOR SWING...';
+    btnSwingAction.style.background = '#6b21a8'; // Purple
+    btnSwingAction.style.pointerEvents = 'none'; // Prevent double clicking
+  }
+});
+
+window.addEventListener('devicemotion', (event) => {
+  if (currentGameMode !== 'golf' || swingState === 'IDLE') return;
+
+  const accGravity = event.accelerationIncludingGravity;
+  let linearAcc = null;
+
+  if (accGravity && accGravity.x !== null && accGravity.y !== null && accGravity.z !== null) {
+    if (!gravityInitialized) {
+      gravity.x = accGravity.x;
+      gravity.y = accGravity.y;
+      gravity.z = accGravity.z;
+      gravityInitialized = true;
+    } else {
+      const alpha = 0.85;
+      gravity.x = alpha * gravity.x + (1 - alpha) * accGravity.x;
+      gravity.y = alpha * gravity.y + (1 - alpha) * accGravity.y;
+      gravity.z = alpha * gravity.z + (1 - alpha) * accGravity.z;
+    }
+
+    linearAcc = {
+      x: accGravity.x - gravity.x,
+      y: accGravity.y - gravity.y,
+      z: accGravity.z - gravity.z
+    };
+  } else if (event.acceleration && event.acceleration.x !== null) {
+    linearAcc = event.acceleration;
+  }
+
+  if (!linearAcc) return;
+
+  const accelMagnitude = Math.sqrt(linearAcc.x**2 + linearAcc.y**2 + linearAcc.z**2);
+
+  if (swingState === 'WAITING') {
+    if (accelMagnitude > SWING_ACCEL_THRESHOLD) {
+      swingState = 'RECORDING';
+      swingStartTime = performance.now();
+      peakAccel = accelMagnitude;
+      peakYaw = myHeading;
+      btnSwingAction.innerHTML = 'RECORDING!';
+      btnSwingAction.style.background = '#06b6d4'; // Cyan
+    }
+  } else if (swingState === 'RECORDING') {
+    const elapsed = performance.now() - swingStartTime;
+    if (elapsed < SWING_RECORDING_MS) {
+      if (accelMagnitude > peakAccel) {
+        peakAccel = accelMagnitude;
+        peakYaw = myHeading;
+      }
+    } else {
+      // Finished recording
+      swingState = 'IDLE';
+      btnSwingAction.innerHTML = '🏌️‍♂️ SWING';
+      btnSwingAction.style.background = '';
+      btnSwingAction.style.pointerEvents = 'auto';
+      
+      const distance = peakAccel * 1.0;
+      const adjustedYaw = (peakYaw - 90 + 360) % 360;
+      
+      socket.emit('golf-swing', { distance, heading: adjustedYaw });
+      swingWrapper.classList.remove('active');
+    }
   }
 });
 
@@ -846,11 +928,14 @@ function stopTracking() {
 
 // Check proximity to buildings
 function checkProximities() {
+  const proximityLabel = document.getElementById('proximity-label');
+
   if (currentGameMode === 'golf' && currentGolfState) {
+    if (proximityLabel) proximityLabel.textContent = 'Golf Distances';
     const distToBall = calculateDistance(myLat, myLng, currentGolfState.ballLat, currentGolfState.ballLng);
     const distToHole = calculateDistance(currentGolfState.ballLat, currentGolfState.ballLng, currentGolfState.holeLat, currentGolfState.holeLng);
     
-    nearestBuildingName.textContent = `Hole: ${Math.round(distToHole)}m | Ball: ${Math.round(distToBall)}m`;
+    nearestBuildingName.innerHTML = `Ball: ${Math.round(distToBall)}m<br>Hole: ${Math.round(distToHole)}m`;
 
     if (distToBall <= 50) {
       proximityContainer.style.display = 'flex';
@@ -867,6 +952,7 @@ function checkProximities() {
   }
 
   swingWrapper.classList.remove('active');
+  if (proximityLabel) proximityLabel.textContent = 'Nearest Building';
   if (buildings.length === 0) return;
 
   let closestDist = Infinity;

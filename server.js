@@ -422,7 +422,7 @@ io.on('connection', (socket) => {
   });
 
   // Golf Swing Action
-  socket.on('golf-swing', () => {
+  socket.on('golf-swing', (data) => {
     let roomCode = null;
     for (const code in lobbies) {
       if (lobbies[code].players[socket.id]) {
@@ -441,27 +441,30 @@ io.on('connection', (socket) => {
     // Increment swing count
     player.swings += 1;
     
-    // Calculate new ball location towards hole
-    // Simple linear interpolation / vector calculation
-    const holeLat = gs.holeLat;
-    const holeLng = gs.holeLng;
-    const dx = holeLng - gs.ballLng;
-    const dy = holeLat - gs.ballLat;
-    const distanceToHoleDeg = Math.sqrt(dx*dx + dy*dy);
-    
-    // Generate random distance to swing in meters (25-150m)
-    const swingDistMeters = Math.random() * 125 + 25;
-    
-    // Approx conversion: 1 degree latitude = 111,320 meters
-    // 1 degree longitude = 111,320 * cos(latitude)
+    const distance = data.distance || 0;
+    const heading = data.heading || 0;
+
     const metersPerLat = 111320;
     const metersPerLng = 111320 * Math.cos(gs.ballLat * Math.PI / 180);
-    
+
+    // Convert heading to dx/dy (0 deg = North)
+    const headingRad = heading * Math.PI / 180;
+    const dyMeters = distance * Math.cos(headingRad);
+    const dxMeters = distance * Math.sin(headingRad);
+
+    gs.ballLat += dyMeters / metersPerLat;
+    gs.ballLng += dxMeters / metersPerLng;
+
+    // Check distance to hole
+    const holeLat = gs.holeLat;
+    const holeLng = gs.holeLng;
+    const dyToHole = holeLat - gs.ballLat;
+    const dxToHole = holeLng - gs.ballLng;
     const distanceToHoleMeters = Math.sqrt(
-      Math.pow(dy * metersPerLat, 2) + Math.pow(dx * metersPerLng, 2)
+      Math.pow(dyToHole * metersPerLat, 2) + Math.pow(dxToHole * metersPerLng, 2)
     );
     
-    if (distanceToHoleMeters <= swingDistMeters + 50) {
+    if (distanceToHoleMeters <= 50) {
       // It goes in!
       gs.ballLat = holeLat;
       gs.ballLng = holeLng;
@@ -474,11 +477,6 @@ io.on('connection', (socket) => {
       
       setTimeout(() => endGame(roomCode, 'golf-finished'), 2000);
     } else {
-      // Move ball towards hole
-      const ratio = swingDistMeters / distanceToHoleMeters;
-      gs.ballLat += dy * ratio;
-      gs.ballLng += dx * ratio;
-      
       io.to(roomCode).emit('golf-state-update', {
         golfState: gs,
         playerId: socket.id,
