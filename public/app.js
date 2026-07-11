@@ -22,10 +22,35 @@ let myLat = 0;
 let myLng = 0;
 let myAccuracy = 0;
 let nearestBuilding = null;
-const CAPTURE_RADIUS_METERS = 20; // Player must be within 20m of building
+const CAPTURE_RADIUS_METERS = 50; // Player must be within 50m of building
 let myHeading = 0;
 let prevLat = null;
 let prevLng = null;
+
+// GPS Smoothing State (speed cap at 8 m/s)
+const MAX_SPEED_MPS = 8; // Maximum plausible walking/jogging speed
+let smoothLat = null; // Exponentially-smoothed latitude
+let smoothLng = null; // Exponentially-smoothed longitude
+let lastGpsTimestamp = null;
+let currentGameMode = 'lockout';
+let currentGolfState = null;
+let golfBallMarker = null;
+let golfHoleMarker = null; // Used to calculate dt between updates
+let markerAnimFrame = null; // requestAnimationFrame handle for own marker
+let targetLat = 0; // Lerp target latitude
+let targetLng = 0; // Lerp target longitude
+let animStartLat = 0; // Lerp start latitude
+let animStartLng = 0; // Lerp start longitude
+let animStartTime = 0; // Lerp animation start time
+const MARKER_GLIDE_MS = 800; // Duration markers take to glide between positions
+
+// Opponent marker smoothing state
+let oppTargetLat = 0;
+let oppTargetLng = 0;
+let oppAnimStartLat = 0;
+let oppAnimStartLng = 0;
+let oppAnimStartTime = 0;
+let oppAnimFrame = null;
 
 // DOM Elements
 const lobbyScreen = document.getElementById('lobby-screen');
@@ -52,8 +77,18 @@ const proximityDot = document.getElementById('proximity-dot');
 const proximityText = document.getElementById('proximity-text');
 const btnCenterGameMap = document.getElementById('btn-center-game-map');
 const eventFeed = document.getElementById('event-feed');
-const captureWrapper = document.getElementById('capture-wrapper');
-const btnCaptureAction = document.getElementById('btn-capture-action');
+const gpsTimestampDisplay = document.getElementById('gps-timestamp-display');
+let attemptedCaptures = new Set();
+const scoreMeMini = document.getElementById('score-me-mini');
+const scoreOppMini = document.getElementById('score-opp-mini');
+const hudScoreDividerMini = document.getElementById('hud-score-divider-mini');
+const buildingSelector = document.getElementById('building-selector');
+const selectedBuildingDesc = document.getElementById('selected-building-desc');
+const hudScoreboardLeft = document.getElementById('hud-scoreboard-left');
+const hudGolfScoreLeft = document.getElementById('hud-golf-score-left');
+const golfSwingsDisplay = document.getElementById('golf-swings');
+const swingWrapper = document.getElementById('swing-wrapper');
+const btnSwingAction = document.getElementById('btn-swing-action');
 
 // Game Over Dialog Elements
 const dialogOverlay = document.getElementById('dialog-overlay');
@@ -124,10 +159,15 @@ function showEventBanner(message, type = 'system') {
 }
 
 // --- Socket Emitters ---
+function getSelectedGameMode() {
+  const selected = document.querySelector('input[name="game-mode"]:checked');
+  return selected ? selected.value : 'lockout';
+}
+
 btnCreateLobby.addEventListener('click', () => {
   requestOrientationPermission();
   myUsername = getNickname();
-  socket.emit('create-lobby', { username: myUsername });
+  socket.emit('create-lobby', { username: myUsername, gameMode: getSelectedGameMode() });
 });
 
 btnJoinLobby.addEventListener('click', () => {
@@ -144,7 +184,7 @@ btnJoinLobby.addEventListener('click', () => {
 btnTestSolo.addEventListener('click', () => {
   requestOrientationPermission();
   myUsername = getNickname();
-  socket.emit('create-test-lobby', { username: myUsername });
+  socket.emit('create-test-lobby', { username: myUsername, gameMode: getSelectedGameMode() });
 });
 
 btnLeaveLobby.addEventListener('click', () => {
@@ -161,22 +201,33 @@ btnStartGame.addEventListener('click', () => {
 btnDialogClose.addEventListener('click', () => {
   lobbyCode = '';
   dialogOverlay.style.display = 'none';
+  // Reset local building capture statuses immediately
+  if (buildings) {
+    buildings.forEach(b => b.capturedBy = null);
+    updateBuildingPins();
+  }
+  // Clear capture attempts
+  attemptedCaptures.clear();
+  // Fully clean up active game state and trackers
+  stopTracking();
+  // Restart fresh passive tracking for the lobby map
+  startTracking();
   showScreen('lobby');
 });
 
 // --- Socket Listeners ---
 socket.on('lobby-created', (data) => {
   lobbyCode = data.code;
+  currentGameMode = data.gameMode || 'lockout';
   isHost = true;
   roomCodeDisplay.textContent = lobbyCode;
-  // If 'game-started' fires on the same connection immediately (solo test),
-  // skip going to the waiting room. We check inside game-started.
   showScreen('waiting');
   updateWaitingRoomUI(data.players);
 });
 
 socket.on('lobby-joined', (data) => {
   lobbyCode = data.code;
+  currentGameMode = data.gameMode || 'lockout';
   isHost = false;
   roomCodeDisplay.textContent = lobbyCode;
   showScreen('waiting');
@@ -194,25 +245,83 @@ socket.on('error-msg', (message) => {
 socket.on('game-started', (data) => {
   buildings = data.buildings;
   players = data.players;
+  currentGameMode = data.gameMode || 'lockout';
+  currentGolfState = data.golfState || null;
 
-  // Hide opponent score column in HUD if solo mode
-  const isSolo = Object.keys(players).length === 1;
-  const oppScoreItem = document.querySelector('.score-panel .score-item:nth-child(3)');
-  const scoreDivider = document.querySelector('.score-panel .score-divider');
-  if (oppScoreItem && scoreDivider) {
+  // Toggle HUD based on game mode
+  if (currentGameMode === 'golf') {
+    hudScoreboardLeft.style.display = 'none';
+    hudGolfScoreLeft.style.display = 'flex';
+    document.querySelector('.timer-and-dropdown-container').style.display = 'none';
+    const meId = socket.id;
+    golfSwingsDisplay.textContent = players[meId]?.swings || 0;
+  } else {
+    hudScoreboardLeft.style.display = 'flex';
+    hudGolfScoreLeft.style.display = 'none';
+    document.querySelector('.timer-and-dropdown-container').style.display = 'flex';
+    
+    // Hide opponent score column in HUD if solo mode
+    const isSolo = Object.keys(players).length === 1;
+    const oppScoreText = document.getElementById('score-opp');
+    const mainScoreDivider = document.getElementById('hud-score-divider-main');
+    
     if (isSolo) {
-      oppScoreItem.style.display = 'none';
-      scoreDivider.style.display = 'none';
+      if (oppScoreText) oppScoreText.style.display = 'none';
+      if (mainScoreDivider) mainScoreDivider.style.display = 'none';
+      if (scoreOppMini) scoreOppMini.style.display = 'none';
+      if (hudScoreDividerMini) hudScoreDividerMini.style.display = 'none';
     } else {
-      oppScoreItem.style.display = 'flex';
-      scoreDivider.style.display = 'block';
+      if (oppScoreText) oppScoreText.style.display = 'inline';
+      if (mainScoreDivider) mainScoreDivider.style.display = 'inline';
+      if (scoreOppMini) scoreOppMini.style.display = 'inline';
+      if (hudScoreDividerMini) hudScoreDividerMini.style.display = 'inline';
+    }
+
+    // Populate building selector dropdown
+    if (buildingSelector) {
+      buildingSelector.innerHTML = '<option value="" disabled selected>Select Building...</option>';
+      buildings.forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b.id;
+        opt.textContent = b.name;
+        buildingSelector.appendChild(opt);
+      });
+      if (selectedBuildingDesc) {
+        selectedBuildingDesc.textContent = 'Select a building above for details.';
+      }
     }
   }
 
   showScreen('game');
   updateBuildingPins();
+  // Reset capture attempts
+  attemptedCaptures.clear();
   // Ensure location tracking is active
   startTracking();
+});
+
+socket.on('golf-state-update', (data) => {
+  currentGolfState = data.golfState;
+  const { playerId, swings } = data;
+  if (playerId === socket.id) {
+    golfSwingsDisplay.textContent = swings;
+    swingWrapper.classList.remove('active');
+  }
+  
+  if (golfBallMarker && map) {
+    const newPos = [currentGolfState.ballLat, currentGolfState.ballLng];
+    // Simple transition animation by moving it smoothly 
+    // For simplicity, just setLatLng with transition (Leaflet handles it instantly, but we can do a micro-animation if needed, or just set it)
+    golfBallMarker.setLatLng(newPos);
+    showEventBanner(`Golf ball hit!`, 'system');
+  }
+});
+
+btnSwingAction.addEventListener('click', () => {
+  if (currentGameMode === 'golf') {
+    socket.emit('golf-swing');
+    swingWrapper.classList.remove('active'); // Hide instantly to prevent double-swings
+  }
 });
 
 socket.on('game-tick', (data) => {
@@ -250,10 +359,19 @@ socket.on('location-broadcast', (data) => {
     if (!opponentMarker) {
       opponentMarker = L.marker([lat, lng], { icon: pinkDotIcon }).addTo(map);
       opponentMarker.bindTooltip(`${oppUsername} (Facing: ${oppDir})`, { permanent: true, direction: 'top', className: 'hud-tooltip' });
+      oppTargetLat = lat;
+      oppTargetLng = lng;
     } else {
-      opponentMarker.setLatLng([lat, lng]);
       opponentMarker.setIcon(pinkDotIcon);
       opponentMarker.setTooltipContent(`${oppUsername} (Facing: ${oppDir})`);
+      // Start smooth glide to new position
+      const currentOpp = opponentMarker.getLatLng();
+      oppAnimStartLat = currentOpp.lat;
+      oppAnimStartLng = currentOpp.lng;
+      oppTargetLat = lat;
+      oppTargetLng = lng;
+      oppAnimStartTime = performance.now();
+      if (!oppAnimFrame) animateOpponentMarker();
     }
   }
 });
@@ -270,8 +388,14 @@ socket.on('game-state-update', (data) => {
   const oppId = Object.keys(updatedPlayers).find(id => id !== socket.id);
   const opp = oppId ? updatedPlayers[oppId] : null;
 
-  scoreMe.textContent = Math.round(me ? me.score : 0);
-  scoreOpp.textContent = opp ? Math.round(opp.score) : 0;
+  const meScoreRounded = Math.round(me ? me.score : 0);
+  const oppScoreRounded = Math.round(opp ? opp.score : 0);
+
+  scoreMe.textContent = meScoreRounded;
+  scoreOpp.textContent = oppScoreRounded;
+
+  if (scoreMeMini) scoreMeMini.textContent = meScoreRounded;
+  if (scoreOppMini) scoreOppMini.textContent = oppScoreRounded;
 
   // Update building pin styles
   updateBuildingPins();
@@ -283,9 +407,9 @@ socket.on('game-state-update', (data) => {
     const desc = captureEvent.powerupDesc;
 
     if (isMe) {
-      showEventBanner(`You captured ${name}! ${desc}`, 'me');
+      showEventBanner(`You reached ${name} first! ${desc}`, 'me');
     } else {
-      showEventBanner(`${captureEvent.username} captured ${name}! LOCKED OUT!`, 'opponent');
+      showEventBanner(`${captureEvent.username} reached ${name} before you!`, 'opponent');
     }
   }
 });
@@ -296,31 +420,42 @@ socket.on('game-over', (data) => {
   const oppId = Object.keys(finalPlayers).find(id => id !== socket.id);
   const opp = oppId ? finalPlayers[oppId] : null;
 
-  finalScoreMe.textContent = Math.round(me ? me.score : 0);
-  finalScoreOpp.textContent = opp ? Math.round(opp.score) : 0;
-
-  dialogSubTitle.textContent = `Reason: ${reason}`;
-
-  const isSolo = Object.keys(finalPlayers).length === 1;
-  const dialogScoreBoxDivs = document.querySelectorAll('.dialog-score-box > div');
-  if (isSolo) {
-    if (dialogScoreBoxDivs[1]) dialogScoreBoxDivs[1].style.display = 'none';
-  } else {
-    if (dialogScoreBoxDivs[1]) dialogScoreBoxDivs[1].style.display = 'block';
-  }
-
-  if (winnerId === 'tie') {
-    dialogHeaderTitle.textContent = "IT'S A DRAW!";
-    dialogHeaderTitle.className = "dialog-title";
-    dialogResultText.textContent = "What a neck-and-neck race across campus! Good game!";
-  } else if (winnerId === socket.id) {
-    dialogHeaderTitle.textContent = "🏆 VICTORY IS YOURS!";
+  if (currentGameMode === 'golf') {
+    finalScoreMe.textContent = `${me ? me.swings : 0} Swings`;
+    dialogSubTitle.textContent = `Reason: ${reason}`;
+    
+    document.querySelectorAll('.dialog-score-box > div')[1].style.display = 'none';
+    
+    dialogHeaderTitle.textContent = "⛳ HOLE IN!";
     dialogHeaderTitle.className = "dialog-title dialog-winner";
-    dialogResultText.textContent = isSolo ? `Great training session! You captured all building powerups!` : `Incredible speed! You dominated the campus and claimed the crown.`;
+    dialogResultText.textContent = `You finished the hole in ${me ? me.swings : 0} swings!`;
   } else {
-    dialogHeaderTitle.textContent = "🥈 OPPONENT WINS";
-    dialogHeaderTitle.className = "dialog-title dialog-loser";
-    dialogResultText.textContent = `Almost! Your opponent captured the critical buildings first. Better luck next time!`;
+    finalScoreMe.textContent = Math.round(me ? me.score : 0);
+    finalScoreOpp.textContent = opp ? Math.round(opp.score) : 0;
+
+    dialogSubTitle.textContent = `Reason: ${reason}`;
+
+    const isSolo = Object.keys(finalPlayers).length === 1;
+    const dialogScoreBoxDivs = document.querySelectorAll('.dialog-score-box > div');
+    if (isSolo) {
+      if (dialogScoreBoxDivs[1]) dialogScoreBoxDivs[1].style.display = 'none';
+    } else {
+      if (dialogScoreBoxDivs[1]) dialogScoreBoxDivs[1].style.display = 'block';
+    }
+
+    if (winnerId === 'tie') {
+      dialogHeaderTitle.textContent = "IT'S A DRAW!";
+      dialogHeaderTitle.className = "dialog-title";
+      dialogResultText.textContent = "What a neck-and-neck race across campus! Good game!";
+    } else if (winnerId === socket.id) {
+      dialogHeaderTitle.textContent = "🏆 VICTORY IS YOURS!";
+      dialogHeaderTitle.className = "dialog-title dialog-winner";
+      dialogResultText.textContent = isSolo ? `Great training session! You captured all building powerups!` : `Incredible speed! You dominated the campus and claimed the crown.`;
+    } else {
+      dialogHeaderTitle.textContent = "🥈 OPPONENT WINS";
+      dialogHeaderTitle.className = "dialog-title dialog-loser";
+      dialogResultText.textContent = `Almost! Your opponent captured the critical buildings first. Better luck next time!`;
+    }
   }
 
   dialogOverlay.style.display = 'flex';
@@ -376,69 +511,139 @@ function initGlobalMap() {
 
   map = L.map('game-map', {
     zoomControl: false,
-    maxZoom: 20
+    maxZoom: 21
   }).setView([defaultLat, defaultLng], 17);
 
-  // Styled Dark Matter Map
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: 'abcd'
+  // --- Dual-layer map for colorful labels + dark game aesthetic ---
+  // Base layer: CartoDB Voyager (colorful with building names, roads, POIs)
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
+    maxNativeZoom: 19, // Prevents blank tiles — upscales beyond 19
+    maxZoom: 21
   }).addTo(map);
 }
 
 function drawBuildingPins() {
-  // Clear any existing pins
+  // Clear any existing pins and pulse markers
   for (const id in buildingMarkers) {
     map.removeLayer(buildingMarkers[id]);
   }
+  if (window._buildingPulseMarkers) {
+    window._buildingPulseMarkers.forEach(m => map.removeLayer(m));
+  }
   buildingMarkers = {};
+  window._buildingPulseMarkers = [];
 
   buildings.forEach(b => {
-    // CircleMarker coordinates
-    const marker = L.circleMarker([b.lat, b.lng], {
-      radius: 12,
-      fillColor: '#fbbf24', // Gold
-      color: '#ffffff',
-      weight: 2,
-      opacity: 0.8,
-      fillOpacity: 0.6
-    }).addTo(map);
+    const pinIcon = L.divIcon({
+      className: 'map-pin-container',
+      html: getBuildingPinHtml('#9ca3af', b.name), // Grey pin (uncaptured)
+      iconSize: [30, 42],
+      iconAnchor: [15, 42], // Bottom center of the pin
+      popupAnchor: [0, -44]
+    });
 
-    // Dynamic Pulsing rings for buildings
+    const marker = L.marker([b.lat, b.lng], { icon: pinIcon }).addTo(map);
+
+    // Click tooltip with powerup info
+    marker.bindPopup(`<b>${b.name}</b><br><small>${b.powerup.description}</small>`, {
+      className: 'building-popup',
+      closeButton: false,
+      offset: [0, -30]
+    });
+
+    // Subtle pulse ring beneath pin
     const pulseDiv = L.divIcon({
       className: 'pulse-container',
-      html: `<div class="pulse-ring" style="border-color: #fbbf24"></div>`,
+      html: `<div class="pulse-ring" style="border-color: #9ca3af"></div>`,
       iconSize: [24, 24],
       iconAnchor: [12, 12]
     });
-    L.marker([b.lat, b.lng], { icon: pulseDiv }).addTo(map);
-
-    marker.bindTooltip(`🎁 ${b.name}<br><small>${b.powerup.description}</small>`, {
-      permanent: false,
-      direction: 'top'
-    });
+    const pulseMarker = L.marker([b.lat, b.lng], { icon: pulseDiv }).addTo(map);
+    window._buildingPulseMarkers.push(pulseMarker);
 
     buildingMarkers[b.id] = marker;
   });
 }
 
+/**
+ * Generates the HTML for a Google Maps-style location pin with a bold name label.
+ * @param {string} color - Pin fill color (hex)
+ * @param {string} name - Building name to display above the pin
+ */
+function getBuildingPinHtml(color, name) {
+  return `
+    <div class="gmap-pin-wrapper">
+      <div class="gmap-pin-label">${name}</div>
+      <svg class="gmap-pin-svg" viewBox="0 0 30 42" width="30" height="42" xmlns="http://www.w3.org/2000/svg">
+        <path d="M15 0C6.716 0 0 6.716 0 15c0 10.969 13.17 25.313 14.11 26.348a1.2 1.2 0 0 0 1.78 0C16.83 40.313 30 25.969 30 15 30 6.716 23.284 0 15 0z"
+              fill="${color}" stroke="rgba(0,0,0,0.3)" stroke-width="1"/>
+        <circle cx="15" cy="14" r="6" fill="white" opacity="0.9"/>
+      </svg>
+      <div class="gmap-pin-shadow"></div>
+    </div>
+  `;
+}
+
 function updateBuildingPins() {
+  if (currentGameMode === 'golf' && currentGolfState) {
+    // Hide standard buildings
+    buildings.forEach(b => {
+      const marker = buildingMarkers[b.id];
+      if (marker) marker.setOpacity(0);
+      if (window._buildingPulseMarkers) {
+        window._buildingPulseMarkers.forEach(m => map.removeLayer(m));
+      }
+    });
+    
+    // Draw Golf Pins
+    if (golfBallMarker) { map.removeLayer(golfBallMarker); }
+    if (golfHoleMarker) { map.removeLayer(golfHoleMarker); }
+    
+    const holeIcon = L.divIcon({
+      className: 'map-pin-container',
+      html: getBuildingPinHtml('#10b981', '⛳ Hole'),
+      iconSize: [30, 42], iconAnchor: [15, 42]
+    });
+    golfHoleMarker = L.marker([currentGolfState.holeLat, currentGolfState.holeLng], { icon: holeIcon }).addTo(map);
+
+    const ballIcon = L.divIcon({
+      className: 'map-pin-container',
+      html: getBuildingPinHtml('#ffffff', '⚪ Ball'),
+      iconSize: [30, 42], iconAnchor: [15, 42]
+    });
+    golfBallMarker = L.marker([currentGolfState.ballLat, currentGolfState.ballLng], { icon: ballIcon }).addTo(map);
+    return;
+  }
+
   buildings.forEach(b => {
     const marker = buildingMarkers[b.id];
     if (!marker) return;
 
+    let color, name;
+    const isSolo = Object.keys(players).length <= 1;
     if (b.capturedBy) {
-      if (b.capturedBy === socket.id) {
-        marker.setStyle({ fillColor: '#6366f1', color: '#818cf8', fillOpacity: 0.85 }); // Captured by me (Blue)
-        marker.setTooltipContent(`✅ ${b.name} (Captured by You)`);
+      if (isSolo || b.capturedBy === socket.id) {
+        color = '#ef4444'; // Red — captured by me (or solo)
+        name = `✅ ${b.name}`;
       } else {
-        marker.setStyle({ fillColor: '#ec4899', color: '#f472b6', fillOpacity: 0.85 }); // Captured by opponent (Pink)
-        marker.setTooltipContent(`🔒 ${b.name} (Locked Out)`);
+        color = '#3b82f6'; // Blue — captured by opponent
+        name = `🔒 ${b.name}`;
       }
     } else {
-      marker.setStyle({ fillColor: '#fbbf24', color: '#fbbf24', fillOpacity: 0.6 }); // Uncaptured (Gold)
-      marker.setTooltipContent(`🎁 ${b.name}<br><small>${b.powerup.description}</small>`);
+      color = '#9ca3af'; // Grey — uncaptured
+      name = b.name;
     }
+
+    const pinIcon = L.divIcon({
+      className: 'map-pin-container',
+      html: getBuildingPinHtml(color, name),
+      iconSize: [30, 42],
+      iconAnchor: [15, 42],
+      popupAnchor: [0, -44]
+    });
+    marker.setIcon(pinIcon);
   });
 }
 
@@ -459,22 +664,57 @@ function startTracking() {
 
   watchId = navigator.geolocation.watchPosition(
     (position) => {
-      myLat = position.coords.latitude;
-      myLng = position.coords.longitude;
+      const rawLat = position.coords.latitude;
+      const rawLng = position.coords.longitude;
       myAccuracy = position.coords.accuracy;
+
+      // ---- GPS Speed Capping & Smoothing ----
+      const now = performance.now();
+      if (smoothLat === null || smoothLng === null) {
+        // First fix: accept as-is
+        smoothLat = rawLat;
+        smoothLng = rawLng;
+        lastGpsTimestamp = now;
+      } else {
+        const dtSec = Math.max((now - lastGpsTimestamp) / 1000, 0.1); // seconds since last fix
+        lastGpsTimestamp = now;
+        const dist = calculateDistance(smoothLat, smoothLng, rawLat, rawLng);
+        const speed = dist / dtSec; // m/s
+
+        if (speed > MAX_SPEED_MPS) {
+          // GPS jumped too far — clamp to max speed along the same bearing
+          const clampRatio = (MAX_SPEED_MPS * dtSec) / dist;
+          // Lerp smoothLat/smoothLng toward raw by clampRatio
+          smoothLat = smoothLat + (rawLat - smoothLat) * clampRatio;
+          smoothLng = smoothLng + (rawLng - smoothLng) * clampRatio;
+        } else {
+          // Within speed limit — use exponential moving average for jitter reduction
+          const alpha = 0.6; // Higher = more responsive, lower = smoother
+          smoothLat = smoothLat + (rawLat - smoothLat) * alpha;
+          smoothLng = smoothLng + (rawLng - smoothLng) * alpha;
+        }
+      }
+
+      // Store the smoothed values as the "official" position
+      myLat = smoothLat;
+      myLng = smoothLng;
 
       // Update UI (only if game screen is active)
       if (gpsAccuracyDisplay) {
         gpsAccuracyDisplay.textContent = `${myAccuracy.toFixed(1)}m`;
         gpsAccuracyDisplay.style.color = myAccuracy > 25 ? '#ef4444' : '';
       }
+      if (gpsTimestampDisplay) {
+        const d = new Date();
+        gpsTimestampDisplay.textContent = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
+      }
 
       // Handle Heading
       if (position.coords.heading !== null && position.coords.heading !== undefined && !isNaN(position.coords.heading)) {
         myHeading = position.coords.heading;
       } else if (prevLat !== null && prevLng !== null) {
-        const dist = calculateDistance(prevLat, prevLng, myLat, myLng);
-        if (dist > 1.5) { // Only calculate heading if moved more than 1.5 meters to avoid compass jitter
+        const headingDist = calculateDistance(prevLat, prevLng, myLat, myLng);
+        if (headingDist > 1.5) {
           myHeading = getHeadingFromCoords(prevLat, prevLng, myLat, myLng);
         }
       }
@@ -482,9 +722,8 @@ function startTracking() {
       prevLat = myLat;
       prevLng = myLng;
 
-      // Update own marker on Leaflet
+      // ---- Smooth Marker Animation (glide, don't jump) ----
       if (map) {
-        const coords = [myLat, myLng];
         const dirString = getCompassDirection(myHeading);
         const blueDotIcon = L.divIcon({
           className: 'custom-player-pin',
@@ -494,11 +733,13 @@ function startTracking() {
         });
 
         if (!myMarker) {
-          map.setView(coords, 18); // Focus map first time
-          myMarker = L.marker(coords, { icon: blueDotIcon }).addTo(map);
+          map.setView([myLat, myLng], 18);
+          myMarker = L.marker([myLat, myLng], { icon: blueDotIcon }).addTo(map);
           myMarker.bindTooltip(`You (Facing: ${dirString})`, { permanent: true, direction: 'top', className: 'hud-tooltip' });
+          targetLat = myLat;
+          targetLng = myLng;
 
-          myAccuracyCircle = L.circle(coords, {
+          myAccuracyCircle = L.circle([myLat, myLng], {
             radius: myAccuracy,
             color: '#6366f1',
             fillColor: '#6366f1',
@@ -506,19 +747,22 @@ function startTracking() {
             weight: 1
           }).addTo(map);
         } else {
-          myMarker.setLatLng(coords);
           myMarker.setIcon(blueDotIcon);
           myMarker.setTooltipContent(`You (Facing: ${dirString})`);
-
-          myAccuracyCircle.setLatLng(coords);
-          myAccuracyCircle.setRadius(myAccuracy);
+          // Set up glide animation toward new smoothed position
+          const current = myMarker.getLatLng();
+          animStartLat = current.lat;
+          animStartLng = current.lng;
+          targetLat = myLat;
+          targetLng = myLng;
+          animStartTime = performance.now();
+          if (!markerAnimFrame) animateMyMarker();
         }
       }
 
-      // Emit location to socket room (only if we are in an active game)
+      // Emit smoothed location to socket room (only if we are in an active game)
       if (lobbyCode) {
         socket.emit('player-location', { lat: myLat, lng: myLng, accuracy: myAccuracy, heading: myHeading });
-        // Calculate proximities & look for nearest building
         checkProximities();
       }
     },
@@ -530,25 +774,106 @@ function startTracking() {
   );
 }
 
+/**
+ * Smoothly lerps own marker from current position toward (targetLat, targetLng)
+ * using requestAnimationFrame for 60fps gliding.
+ */
+function animateMyMarker() {
+  const now = performance.now();
+  const elapsed = now - animStartTime;
+  const t = Math.min(elapsed / MARKER_GLIDE_MS, 1); // 0..1 progress
+  // Ease-out cubic for natural deceleration
+  const ease = 1 - Math.pow(1 - t, 3);
+
+  const lat = animStartLat + (targetLat - animStartLat) * ease;
+  const lng = animStartLng + (targetLng - animStartLng) * ease;
+
+  if (myMarker) {
+    myMarker.setLatLng([lat, lng]);
+    if (myAccuracyCircle) {
+      myAccuracyCircle.setLatLng([lat, lng]);
+      myAccuracyCircle.setRadius(myAccuracy);
+    }
+  }
+
+  if (t < 1) {
+    markerAnimFrame = requestAnimationFrame(animateMyMarker);
+  } else {
+    markerAnimFrame = null;
+  }
+}
+
+/**
+ * Smoothly lerps opponent marker from current position toward (oppTargetLat, oppTargetLng)
+ */
+function animateOpponentMarker() {
+  const now = performance.now();
+  const elapsed = now - oppAnimStartTime;
+  const t = Math.min(elapsed / MARKER_GLIDE_MS, 1);
+  const ease = 1 - Math.pow(1 - t, 3);
+
+  const lat = oppAnimStartLat + (oppTargetLat - oppAnimStartLat) * ease;
+  const lng = oppAnimStartLng + (oppTargetLng - oppAnimStartLng) * ease;
+
+  if (opponentMarker) {
+    opponentMarker.setLatLng([lat, lng]);
+  }
+
+  if (t < 1) {
+    oppAnimFrame = requestAnimationFrame(animateOpponentMarker);
+  } else {
+    oppAnimFrame = null;
+  }
+}
+
 function stopTracking() {
   if (watchId !== null) {
     navigator.geolocation.clearWatch(watchId);
     watchId = null;
   }
+  if (markerAnimFrame) { cancelAnimationFrame(markerAnimFrame); markerAnimFrame = null; }
+  if (oppAnimFrame) { cancelAnimationFrame(oppAnimFrame); oppAnimFrame = null; }
   myMarker = null;
   myAccuracyCircle = null;
   opponentMarker = null;
   buildingMarkers = {};
+  if (golfBallMarker) { map.removeLayer(golfBallMarker); golfBallMarker = null; }
+  if (golfHoleMarker) { map.removeLayer(golfHoleMarker); golfHoleMarker = null; }
+  smoothLat = null;
+  smoothLng = null;
+  lastGpsTimestamp = null;
 }
 
 // Check proximity to buildings
 function checkProximities() {
+  if (currentGameMode === 'golf' && currentGolfState) {
+    const distToBall = calculateDistance(myLat, myLng, currentGolfState.ballLat, currentGolfState.ballLng);
+    const distToHole = calculateDistance(currentGolfState.ballLat, currentGolfState.ballLng, currentGolfState.holeLat, currentGolfState.holeLng);
+    
+    nearestBuildingName.textContent = `Hole: ${Math.round(distToHole)}m | Ball: ${Math.round(distToBall)}m`;
+
+    if (distToBall <= 50) {
+      proximityContainer.style.display = 'flex';
+      proximityDot.className = 'proximity-pulse very-near';
+      proximityText.textContent = 'Ball Reached!';
+      swingWrapper.classList.add('active');
+    } else {
+      proximityContainer.style.display = 'flex';
+      proximityDot.className = 'proximity-pulse near';
+      proximityText.textContent = 'Walk to ball';
+      swingWrapper.classList.remove('active');
+    }
+    return;
+  }
+
+  swingWrapper.classList.remove('active');
   if (buildings.length === 0) return;
 
   let closestDist = Infinity;
   let closestBuilding = null;
 
   buildings.forEach(b => {
+    if (b.capturedBy) return; // Skip already captured buildings
     const dist = calculateDistance(myLat, myLng, b.lat, b.lng);
     if (dist < closestDist) {
       closestDist = dist;
@@ -559,21 +884,18 @@ function checkProximities() {
   nearestBuilding = closestBuilding;
 
   if (nearestBuilding) {
-    const isCaptured = nearestBuilding.capturedBy;
     nearestBuildingName.textContent = `${nearestBuilding.name} (${Math.round(closestDist)}m)`;
 
     // Proximity logic
     if (closestDist <= CAPTURE_RADIUS_METERS) {
       proximityContainer.style.display = 'flex';
-
-      if (isCaptured) {
-        proximityDot.className = 'proximity-pulse';
-        proximityText.textContent = 'Captured';
-        captureWrapper.classList.remove('active');
-      } else {
-        proximityDot.className = 'proximity-pulse very-near';
-        proximityText.textContent = 'In Range!';
-        captureWrapper.classList.add('active');
+      proximityDot.className = 'proximity-pulse very-near';
+      proximityText.textContent = 'Reached!';
+      
+      // Auto-trigger capture immediately
+      if (!attemptedCaptures.has(nearestBuilding.id)) {
+        attemptedCaptures.add(nearestBuilding.id);
+        socket.emit('capture-powerup', { buildingId: nearestBuilding.id });
       }
     } else {
       if (closestDist <= 50) {
@@ -583,22 +905,12 @@ function checkProximities() {
       } else {
         proximityContainer.style.display = 'none';
       }
-      captureWrapper.classList.remove('active');
     }
   } else {
     nearestBuildingName.textContent = 'None Nearby';
     proximityContainer.style.display = 'none';
-    captureWrapper.classList.remove('active');
   }
 }
-
-// Trigger powerup capture action
-btnCaptureAction.addEventListener('click', () => {
-  if (nearestBuilding && !nearestBuilding.capturedBy) {
-    socket.emit('capture-powerup', { buildingId: nearestBuilding.id });
-    captureWrapper.classList.remove('active'); // Hide button instantly to prevent double-taps
-  }
-});
 
 // Center map onto self
 btnCenterGameMap.addEventListener('click', () => {
@@ -700,6 +1012,19 @@ function onDeviceOrientation(event) {
     // Android: alpha is CCW from North, so we negate and normalise
     myHeading = ((360 - event.alpha) % 360);
   }
+
+  // Update own marker heading immediately on the map for responsive rotation
+  if (map && myMarker) {
+    const dirString = getCompassDirection(myHeading);
+    const blueDotIcon = L.divIcon({
+      className: 'custom-player-pin',
+      html: getPlayerIconHtml('#6366f1', myHeading),
+      iconSize: [20, 20],
+      iconAnchor: [10, 10]
+    });
+    myMarker.setIcon(blueDotIcon);
+    myMarker.setTooltipContent(`You (Facing: ${dirString})`);
+  }
 }
 
 // --- App Initialisation ---
@@ -718,4 +1043,15 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Start tracking user location passively so the pin appears on the lobby map
   startTracking();
+
+  // Dropdown change listener
+  if (buildingSelector) {
+    buildingSelector.addEventListener('change', () => {
+      const selectedId = buildingSelector.value;
+      const selectedB = buildings.find(b => b.id === selectedId);
+      if (selectedB && selectedBuildingDesc) {
+        selectedBuildingDesc.textContent = `${selectedB.description || "No description."} (Powerup: ${selectedB.powerup.description})`;
+      }
+    });
+  }
 });
