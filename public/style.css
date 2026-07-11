@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
 :root {
   --bg-gradient: linear-gradient(135deg, #090d16 0%, #111029 100%);
   --glass-bg: rgba(17, 24, 39, 0.65);
@@ -937,4 +939,58 @@ input[type="text"]:focus {
 .btn-swing-wrapper.active {
   display: block;
   animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+/* ==========================================================================
+   Campus Golf Mode Custom Styles (Exclusive override)
+   ========================================================================== */
+
+/* Use Share Tech Mono (technical DIN-like fixed-width sans-serif) for Golf UI */
+.golf-mode #game-screen,
+.golf-mode #game-screen *,
+.golf-mode #dialog-overlay,
+.golf-mode #dialog-overlay * {
+  font-family: 'Share Tech Mono', 'Courier New', Courier, monospace !important;
+}
+
+/* Make HUD Header Flush with the top */
+.golf-mode .hud-top {
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+}
+
+.golf-mode .score-panel-left {
+  border-radius: 0 0 6px 0 !important; /* Sharper, slightly rounded rectangular corner */
+  border-top: none !important;
+  border-left: none !important;
+  padding: 12px 24px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Make HUD Footer Flush with the bottom */
+.golf-mode .hud-bottom {
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+}
+
+.golf-mode .bottom-card {
+  border-radius: 6px 6px 0 0 !important; /* Sharper corners at the top, flush at bottom */
+  border-bottom: none !important;
+  border-left: none !important;
+  border-right: none !important;
+  padding: 18px 24px !important;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Sharper, more rectangular buttons (but not full-corner) */
+.golf-mode .btn,
+.golf-mode #btn-swing-action {
+  border-radius: 4px !important;
+}
+
+/* Adjust swing button position to float nicely above the flush bottom card */
+.golf-mode .btn-swing-wrapper {
+  bottom: 110px !important;
 }

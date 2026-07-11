@@ -116,9 +116,17 @@ function showScreen(screenId) {
   waitingScreen.classList.remove('active');
   gameScreen.classList.remove('active');
 
-  if (screenId === 'lobby') lobbyScreen.classList.add('active');
-  if (screenId === 'waiting') waitingScreen.classList.add('active');
-  if (screenId === 'game') gameScreen.classList.add('active');
+  if (screenId === 'lobby') {
+    lobbyScreen.classList.add('active');
+    document.body.classList.remove('golf-mode');
+  }
+  if (screenId === 'waiting') {
+    waitingScreen.classList.add('active');
+    document.body.classList.remove('golf-mode');
+  }
+  if (screenId === 'game') {
+    gameScreen.classList.add('active');
+  }
 
   // Force Leaflet to recalculate its container size after screen transitions
   if (map) {
@@ -260,12 +268,14 @@ socket.on('game-started', (data) => {
 
   // Toggle HUD based on game mode
   if (currentGameMode === 'golf') {
+    document.body.classList.add('golf-mode');
     hudScoreboardLeft.style.display = 'none';
     hudGolfScoreLeft.style.display = 'flex';
     document.querySelector('.timer-and-dropdown-container').style.display = 'none';
     const meId = socket.id;
     golfSwingsDisplay.textContent = players[meId]?.swings || 0;
   } else {
+    document.body.classList.remove('golf-mode');
     hudScoreboardLeft.style.display = 'flex';
     hudGolfScoreLeft.style.display = 'none';
     document.querySelector('.timer-and-dropdown-container').style.display = 'flex';
