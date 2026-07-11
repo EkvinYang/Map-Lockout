@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Map Lockout - Campus GPS Battle</title>
+  
+  <!-- SEO & Mobile Config -->
+  <meta name="description" content="A real-time competitive campus multiplayer game. GPS tracking, capture powerups and lock out opponents!">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  
+  <!-- Leaflet Map CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+     crossorigin=""/>
+  
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="/style.css">
+  
+  <!-- Socket.io -->
+  <script src="/socket.io/socket.io.js"></script>
+  
+  <!-- Leaflet Map JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+     crossorigin=""></script>
+</head>
+<body>
+
+  <!-- The Fullscreen Leaflet Map (shared background) -->
+  <div id="game-map"></div>
+
+  <!-- ================= LOBBY SETUP SCREEN ================= -->
+  <div id="lobby-screen" class="screen active">
+    <div class="glass-panel">
+      <div class="logo-container">
+        <h1>MAP LOCKOUT</h1>
+        <p>Real-Time Campus GPS Conquest</p>
+      </div>
+
+      <div class="input-group">
+        <label for="username" class="input-label">Enter Nickname</label>
+        <input type="text" id="username" placeholder="e.g., RunnerX" maxlength="12">
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 15px; width: 100%;">
+        <button id="btn-create-lobby" class="btn btn-accent">
+          Create New Lobby
+        </button>
+        
+        <div class="or-divider">Or join a friend's</div>
+        
+        <div class="input-group">
+          <input type="text" id="join-code" placeholder="Enter Room Code (4 digits)" maxlength="4" style="text-align: center; text-transform: uppercase;">
+        </div>
+        
+        <button id="btn-join-lobby" class="btn btn-secondary">
+          Join Lobby
+        </button>
+
+        <div class="or-divider">Or test alone</div>
+        
+        <button id="btn-test-solo" class="btn btn-warning-glow">
+          ⚡ Test Game (Solo) ⚡
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= WAITING ROOM SCREEN ================= -->
+  <div id="waiting-screen" class="screen">
+    <div class="glass-panel">
+      <div class="logo-container">
+        <h1>Lobby Waiting</h1>
+        <p>Invite your friend to join the room</p>
+      </div>
+
+      <div class="room-code-box">
+        <span class="room-code-label">Room Code</span>
+        <span id="room-code-display" class="room-code">----</span>
+      </div>
+
+      <div class="player-list">
+        <h3>Connected Players (2 Max)</h3>
+        <div id="player-rows-container">
+          <!-- Populated dynamically: player rows -->
+          <div class="player-row">
+            <div class="player-info">
+              <div class="player-avatar me">P1</div>
+              <span>You (Waiting...)</span>
+            </div>
+            <span class="player-status-badge ready">READY</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
+        <button id="btn-start-game" class="btn btn-accent" style="display: none;">
+          Start Campus Battle
+        </button>
+        <div id="host-only-msg" style="font-size: 0.8rem; color: var(--text-muted); display: none;">
+          Waiting for host to start the game...
+        </div>
+        <button id="btn-leave-lobby" class="btn btn-secondary">
+          Leave Room
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= ACTIVE GAME SCREEN ================= -->
+  <div id="game-screen" class="screen">
+
+    <!-- HUD Overlay Top: Scores & Timers -->
+    <div class="game-overlay hud-top">
+      <div class="score-panel">
+        <div class="score-item">
+          <span class="score-lbl">You</span>
+          <span id="score-me" class="score-val me">0</span>
+        </div>
+        <div class="score-divider"></div>
+        <div class="score-item">
+          <span class="score-lbl">Opponent</span>
+          <span id="score-opp" class="score-val opponent">0</span>
+        </div>
+      </div>
+      
+      <div class="timer-panel">
+        <span id="game-timer" class="time-val">05:00</span>
+        <span class="time-lbl">Time Left</span>
+      </div>
+    </div>
+
+    <!-- Event Banner Feed Overlay (e.g. Capture notifications) -->
+    <div class="game-overlay event-banner-container" id="event-feed">
+      <!-- Injected dynamically -->
+    </div>
+
+    <!-- Contextual Pulse Capture Action Button -->
+    <div class="game-overlay btn-capture-wrapper" id="capture-wrapper">
+      <button id="btn-capture-action" class="btn-capture">
+        ⚡ CAPTURE POWERUP ⚡
+      </button>
+    </div>
+
+    <!-- HUD Overlay Bottom: Proximity indicators and center button -->
+    <div class="game-overlay hud-bottom">
+      <div class="bottom-card">
+        <div class="hud-row">
+          <div class="hud-details">
+            <div class="hud-detail-item">
+              <span class="hud-detail-label">GPS Accuracy</span>
+              <span id="gps-accuracy-display" class="hud-detail-val">--</span>
+            </div>
+            <div class="hud-detail-item" style="border-left: 1px solid var(--glass-border); padding-left: 15px;">
+              <span class="hud-detail-label">Target Building</span>
+              <span id="nearest-building-name" class="hud-detail-val">None Nearby</span>
+            </div>
+          </div>
+          
+          <div id="proximity-container" class="proximity-indicator" style="display: none;">
+            <div id="proximity-dot" class="proximity-pulse"></div>
+            <span id="proximity-text">In Range</span>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; width: 100%;">
+          <button id="btn-center-game-map" class="btn" style="flex: 1; padding: 10px;">
+            Center My Location
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= DIALOGS / MODALS ================= -->
+  <div id="dialog-overlay" class="dialog-overlay" style="display: none;">
+    <div class="dialog-card">
+      <div class="logo-container">
+        <h2 id="dialog-header-title" class="dialog-title dialog-winner">CONQUEST COMPLETE</h2>
+        <p id="dialog-sub-title">Final Scores & Results</p>
+      </div>
+
+      <div class="dialog-score-box">
+        <div>
+          <h4 style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase;">You</h4>
+          <span id="final-score-me" class="font-space" style="font-size: 1.8rem; font-weight: 700; color: #818cf8;">0</span>
+        </div>
+        <div>
+          <h4 style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase;">Opponent</h4>
+          <span id="final-score-opp" class="font-space" style="font-size: 1.8rem; font-weight: 700; color: #f472b6;">0</span>
+        </div>
+      </div>
+
+      <p id="dialog-result-text" style="font-size: 1rem; color: var(--text-muted);">
+        Calculating final victory status...
+      </p>
+
+      <button id="btn-dialog-close" class="btn btn-accent" style="width: 100%;">
+        Return to Lobby
+      </button>
+    </div>
+  </div>
+
+  <!-- Client Application Logic -->
+  <script src="/app.js"></script>
+</body>
+</html>

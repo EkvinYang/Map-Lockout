@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Map Lockout - GPS Test Tracker</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Space+Grotesk:wght@400;700&display=swap"
+    rel="stylesheet">
+
+  <!-- Leaflet Map CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+  <!-- Socket.io -->
+  <script src="/socket.io/socket.io.js"></script>
+
+  <!-- Leaflet Map JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <style>
+    :root {
+      --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+      --glass-bg: rgba(30, 41, 59, 0.45);
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --accent-color: #6366f1;
+      --accent-glow: rgba(99, 102, 241, 0.5);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Outfit', sans-serif;
+    }
+
+    body {
+      background: var(--bg-gradient);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Container holding the map and HUD */
+    .app-container {
+      position: relative;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #map {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 1;
+      background: #0f172a;
+    }
+
+    /* Modern Dark Map Tile Overlay Hack */
+    .leaflet-tile-container {
+      filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+    }
+
+    /* Glassmorphic HUD overlay */
+    .hud {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      right: 20px;
+      z-index: 10;
+      background: var(--glass-bg);
+      backdrop-filter: blur(16px) saturate(120%);
+      -webkit-backdrop-filter: blur(16px) saturate(120%);
+      border: 1px solid var(--glass-border);
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      max-width: 450px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    @media (max-width: 600px) {
+      .hud {
+        top: auto;
+        bottom: 20px;
+        left: 15px;
+        right: 15px;
+        max-width: none;
+      }
+    }
+
+    .hud-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700;
+      font-size: 1.3rem;
+      letter-spacing: -0.5px;
+      background: linear-gradient(to right, #818cf8, #c084fc);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 6px 12px;
+      border-radius: 100px;
+      border: 1px solid var(--glass-border);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--danger);
+      box-shadow: 0 0 8px var(--danger);
+    }
+
+    .status-dot.connected {
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% {
+        opacity: 0.6;
+      }
+
+      50% {
+        opacity: 1;
+      }
+
+      100% {
+        opacity: 0.6;
+      }
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .stat-card {
+      background: rgba(15, 23, 42, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-value {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .accuracy-val {
+      color: var(--warning);
+    }
+
+    .accuracy-good {
+      color: var(--success);
+    }
+
+    .accuracy-poor {
+      color: var(--danger);
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+    }
+
+    button {
+      flex: 1;
+      background: var(--accent-color);
+      border: none;
+      color: white;
+      padding: 12px 18px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 15px var(--accent-glow);
+      transition: all 0.2s ease;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px var(--accent-glow);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    button.secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-main);
+      border: 1px solid var(--glass-border);
+      box-shadow: none;
+    }
+
+    button.secondary:hover {
+      background: rgba(255, 255, 255, 0.15);
+      box-shadow: none;
+    }
+
+    /* Logs view */
+    .log-panel {
+      max-height: 100px;
+      overflow-y: auto;
+      background: rgba(0, 0, 0, 0.4);
+      border-radius: 8px;
+      padding: 8px;
+      font-family: monospace;
+      font-size: 0.75rem;
+      color: #38bdf8;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      scrollbar-width: thin;
+    }
+
+    .log-entry {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      padding-bottom: 2px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="app-container">
+    <!-- Map Background -->
+    <div id="map"></div>
+
+    <!-- Glassmorphic HUD overlay -->
+    <div class="hud">
+      <div class="hud-header">
+        <h1 class="title">GPS Live Test</h1>
+        <div class="status-badge">
+          <div id="connection-dot" class="status-dot"></div>
+          <span id="connection-status">Connecting...</span>
+        </div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-label">Latitude</span>
+          <span id="lat-val" class="stat-value">--</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Longitude</span>
+          <span id="lng-val" class="stat-value">--</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">GPS Accuracy</span>
+          <span id="accuracy-val" class="stat-value">--</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Updates Sent</span>
+          <span id="count-val" class="stat-value">0</span>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="track-btn">Start Tracking</button>
+        <button id="center-btn" class="secondary">Center Map</button>
+      </div>
+
+      <div class="log-panel" id="log-panel">
+        <div class="log-entry">[System] App initialized. Ready to track.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Socket initialization
+    const socket = io();
+
+    // DOM Elements
+    const latVal = document.getElementById('lat-val');
+    const lngVal = document.getElementById('lng-val');
+    const accuracyVal = document.getElementById('accuracy-val');
+    const countVal = document.getElementById('count-val');
+    const trackBtn = document.getElementById('track-btn');
+    const centerBtn = document.getElementById('center-btn');
+    const logPanel = document.getElementById('log-panel');
+    const connectionDot = document.getElementById('connection-dot');
+    const connectionStatus = document.getElementById('connection-status');
+
+    let watchId = null;
+    let updateCount = 0;
+    let map = null;
+    let userMarker = null;
+    let accuracyCircle = null;
+    let currentCoords = null;
+
+    // Log helper
+    function logMessage(text) {
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+      logPanel.appendChild(entry);
+      logPanel.scrollTop = logPanel.scrollHeight;
+    }
+
+    // Socket status handlers
+    socket.on('connect', () => {
+      connectionDot.classList.add('connected');
+      connectionStatus.textContent = 'Socket Connected';
+      logMessage('Connected to backend server!');
+    });
+
+    socket.on('disconnect', () => {
+      connectionDot.classList.remove('connected');
+      connectionStatus.textContent = 'Disconnected';
+      logMessage('Disconnected from backend server.');
+    });
+
+    socket.on('test-gps-response', (data) => {
+      // Backend confirmation
+      console.log('Server response:', data);
+    });
+
+    // Initialize Leaflet Map
+    function initMap() {
+      // Default center is university campus or a sensible starting point (e.g. Times Square if no GPS)
+      const defaultLat = 40.758896;
+      const defaultLng = -73.985130;
+
+      map = L.map('map', {
+        zoomControl: false // Disable default zoom control to keep UI clean
+      }).setView([defaultLat, defaultLng], 16);
+
+      // Add a premium dark styled map layer (CartoDB Dark Matter is perfect)
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 20
+      }).addTo(map);
+
+      logMessage('Map initialized.');
+    }
+
+    // Track Location Function
+    function startTracking() {
+      if (!navigator.geolocation) {
+        logMessage('Error: Geolocation not supported by this browser.');
+        alert('Geolocation is not supported by your browser.');
+        return;
+      }
+
+      const options = {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      };
+
+      logMessage('Requesting GPS permission...');
+
+      watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          const accuracy = position.coords.accuracy;
+
+          currentCoords = [lat, lng];
+
+          // Update HUD values
+          latVal.textContent = lat.toFixed(6);
+          lngVal.textContent = lng.toFixed(6);
+          accuracyVal.textContent = `${accuracy.toFixed(1)}m`;
+
+          // Color code accuracy
+          accuracyVal.className = 'stat-value';
+          if (accuracy < 10) {
+            accuracyVal.classList.add('accuracy-good');
+          } else if (accuracy < 30) {
+            accuracyVal.classList.add('accuracy-val');
+          } else {
+            accuracyVal.classList.add('accuracy-poor');
+          }
+
+          // Update Leaflet Marker & Circle
+          if (map) {
+            if (!userMarker) {
+              // First location fix: Center map
+              map.setView(currentCoords, 18);
+
+              // Custom styled blue dot
+              const blueDotIcon = L.divIcon({
+                className: 'custom-gps-marker',
+                html: `<div style="
+                  width: 14px; 
+                  height: 14px; 
+                  background-color: #6366f1; 
+                  border: 3px solid white; 
+                  border-radius: 50%;
+                  box-shadow: 0 0 10px #6366f1, 0 0 20px #6366f1;
+                "></div>`,
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
+              });
+
+              userMarker = L.marker(currentCoords, { icon: blueDotIcon }).addTo(map);
+              accuracyCircle = L.circle(currentCoords, {
+                radius: accuracy,
+                color: '#6366f1',
+                fillColor: '#6366f1',
+                fillOpacity: 0.15,
+                weight: 1
+              }).addTo(map);
+            } else {
+              userMarker.setLatLng(currentCoords);
+              accuracyCircle.setLatLng(currentCoords);
+              accuracyCircle.setRadius(accuracy);
+            }
+          }
+
+          // Send to backend via Socket
+          socket.emit('test-gps-update', {
+            latitude: lat,
+            longitude: lng,
+            accuracy: accuracy
+          });
+
+          updateCount++;
+          countVal.textContent = updateCount;
+          logMessage(`GPS Update #${updateCount} sent.`);
+        },
+        (error) => {
+          let errorMsg = 'Unknown GPS Error';
+          switch (error.code) {
+            case error.PERMISSION_DENIED:
+              errorMsg = 'Permission denied by user.';
+              break;
+            case error.POSITION_UNAVAILABLE:
+              errorMsg = 'Position unavailable.';
+              break;
+            case error.TIMEOUT:
+              errorMsg = 'GPS request timed out.';
+              break;
+          }
+          logMessage(`GPS Error: ${errorMsg}`);
+          console.error(error);
+        },
+        options
+      );
+
+      trackBtn.textContent = 'Stop Tracking';
+      trackBtn.style.background = 'var(--danger)';
+      trackBtn.style.boxShadow = '0 4px 15px rgba(239, 68, 68, 0.4)';
+    }
+
+    function stopTracking() {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+        logMessage('Tracking stopped.');
+        trackBtn.textContent = 'Start Tracking';
+        trackBtn.style.background = 'var(--accent-color)';
+        trackBtn.style.boxShadow = '0 4px 15px var(--accent-glow)';
+      }
+    }
+
+    // Toggle button
+    trackBtn.addEventListener('click', () => {
+      if (watchId === null) {
+        startTracking();
+      } else {
+        stopTracking();
+      }
+    });
+
+    // Center button
+    centerBtn.addEventListener('click', () => {
+      if (map && currentCoords) {
+        map.setView(currentCoords, 18);
+        logMessage('Centered map to current location.');
+      } else {
+        logMessage('No active location lock to center map.');
+      }
+    });
+
+    // Run on startup
+    window.addEventListener('DOMContentLoaded', () => {
+      initMap();
+    });
+  </script>
+</body>
+
+</html>
