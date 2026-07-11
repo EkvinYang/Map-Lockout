@@ -555,8 +555,8 @@ function drawBuildingPins() {
 
     const marker = L.marker([b.lat, b.lng], { icon: pinIcon }).addTo(map);
 
-    // Click tooltip with powerup info
-    marker.bindPopup(`<b>${b.name}</b><br><small>${b.powerup.description}</small>`, {
+    // Click tooltip with building description
+    marker.bindPopup(`<b>${b.name}</b><br><small>${b.description}</small>`, {
       className: 'building-popup',
       closeButton: false,
       offset: [0, -30]
