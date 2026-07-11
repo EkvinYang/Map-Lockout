@@ -551,7 +551,7 @@ input[type="text"]:focus {
 
 /* Event Notification Overlay (Top/Center) */
 .event-banner-container {
-  top: 100px;
+  top: calc(115px + env(safe-area-inset-top));
   left: 50%;
   transform: translateX(-50%);
   width: 90%;
@@ -564,7 +564,7 @@ input[type="text"]:focus {
 .event-banner {
   background: rgba(9, 13, 22, 0.9);
   border: 1px solid var(--accent-primary);
-  box-shadow: 0 10px 30px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.12);
   border-radius: 12px;
   padding: 12px 20px;
   display: flex;
@@ -589,12 +589,12 @@ input[type="text"]:focus {
 
 .event-banner.opponent-captured {
   border-color: var(--accent-secondary);
-  box-shadow: 0 10px 30px rgba(236, 72, 153, 0.3);
+  box-shadow: 0 4px 15px rgba(236, 72, 153, 0.12);
 }
 
 .event-banner.system-alert {
   border-color: var(--warning);
-  box-shadow: 0 10px 30px rgba(245, 158, 11, 0.2);
+  box-shadow: 0 4px 15px rgba(245, 158, 11, 0.08);
 }
 
 /* Capture Action Button overlay - hovered over building pin */
@@ -868,11 +868,11 @@ input[type="text"]:focus {
   background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
   color: white;
   border: none;
-  box-shadow: 0 4px 15px rgba(245, 158, 11, 0.4);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.15);
 }
 
 .btn-warning-glow:hover {
-  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.6);
+  box-shadow: 0 6px 15px rgba(245, 158, 11, 0.25);
   filter: brightness(1.1);
 }
 
@@ -920,35 +920,22 @@ input[type="text"]:focus {
   font-family: 'Share Tech Mono', 'Courier New', Courier, monospace !important;
 }
 
-/* Make HUD Header Flush with the top */
-.golf-mode .hud-top {
-  top: 0 !important;
+/* Make HUD Footer flush with the bottom of the screen */
+.golf-mode .hud-bottom {
+  bottom: 0 !important;
   left: 0 !important;
   right: 0 !important;
-}
-
-.golf-mode .score-panel-left {
-  border-radius: 0 0 6px 0 !important;
-  /* Sharper, slightly rounded rectangular corner */
-  border-top: none !important;
-  border-left: none !important;
-  padding: 12px 24px !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
-}
-
-/* Lift HUD Footer higher to prevent Safari dynamic bar overlay/cutoffs */
-.golf-mode .hud-bottom {
-  bottom: calc(35px + env(safe-area-inset-bottom)) !important;
-  left: 15px !important;
-  right: 15px !important;
+  z-index: 1010 !important; /* render in front of the swing button's shadow */
 }
 
 .golf-mode .bottom-card {
-  border-radius: 6px !important;
-  /* Sharper, slightly rounded corners */
-  border: 1px solid var(--glass-border) !important;
-  padding: 15px 20px !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
+  border-radius: 0 !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-bottom: none !important;
+  border-top: 1px solid var(--glass-border) !important;
+  padding: 18px 20px calc(70px + env(safe-area-inset-bottom)) 20px !important;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4) !important;
 }
 
 /* Sharper, more rectangular buttons (but not full-corner) */
@@ -956,26 +943,35 @@ input[type="text"]:focus {
   border-radius: 4px !important;
 }
 
-/* Shrink and reposition swing button in the bottom right corner, above the footer */
 .golf-mode #btn-swing-action {
   font-size: 1.1rem !important;
   padding: 10px 24px !important;
   border-radius: 4px !important;
+  border: none !important; /* no border by default to look clean with gradient */
+  box-sizing: border-box !important;
+  box-shadow: 0 4px 15px rgba(245, 158, 11, 0.45) !important;
+}
+
+.golf-mode #btn-swing-action.swing-active {
+  background: #000000 !important;
+  box-shadow: inset 0 0 0 2px #a855f7 !important; /* inset shadow simulates border cleanly */
+  color: #a855f7 !important;
 }
 
 .golf-mode .btn-swing-wrapper {
-  bottom: calc(150px + env(safe-area-inset-bottom)) !important;
+  bottom: calc(195px + env(safe-area-inset-bottom)) !important;
   right: 20px !important;
   left: auto !important;
   transform: none !important;
 }
 
-/* Position the proximity container (Walk to Ball / Reached indicator) in top-right corner */
+/* Position the proximity container centered, just below the top header */
 .golf-mode #proximity-container {
   position: fixed !important;
-  top: calc(15px + env(safe-area-inset-top)) !important;
-  right: 15px !important;
-  left: auto !important;
+  top: calc(65px + env(safe-area-inset-top)) !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  right: auto !important;
   bottom: auto !important;
   z-index: 10000 !important;
   background: var(--glass-bg) !important;
@@ -983,15 +979,144 @@ input[type="text"]:focus {
   -webkit-backdrop-filter: blur(12px) !important;
   border: 1px solid var(--glass-border) !important;
   border-radius: 6px !important;
-  padding: 10px 16px !important;
+  padding: 10px 20px !important;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
   pointer-events: auto !important;
+  white-space: nowrap !important;
 }
 
-.golf-mode .timer-panel {
-  border-radius: 0 0 0 6px !important; /* Top and right are flush, bottom-left is rounded */
-  border-top: none !important;
-  border-right: none !important;
-  padding: 12px 24px !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
+/* Combined Swings & Timer HUD Top-Center overlay styles */
+/* Full-width header bar matching the footer design */
+.hud-top-combined {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--glass-border);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  padding: calc(env(safe-area-inset-top) + 10px) 20px 10px 20px;
+  pointer-events: auto;
+}
+
+.combined-hud-panel {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.hud-item-combined {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 65px;
+}
+
+.hud-label-combined {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.hud-val-combined {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.hud-val-combined.me {
+  color: #818cf8;
+}
+
+.hud-val-combined.timer-val-color {
+  color: var(--danger);
+  text-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
+}
+
+.hud-divider-combined {
+  width: 1px;
+  height: 24px;
+  background: var(--glass-border);
+}
+
+/* Compass HUD Overlay (Bottom-Left) */
+.compass-wrapper {
+  position: absolute;
+  bottom: calc(195px + env(safe-area-inset-bottom));
+  left: 20px;
+  z-index: 1000;
+  pointer-events: auto;
+  display: none;
+}
+
+.golf-mode .compass-wrapper {
+  display: block;
+}
+
+.compass-ring {
+  width: 60px;
+  height: 60px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 50%;
+  position: relative;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.compass-dir {
+  position: absolute;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.compass-dir.n {
+  top: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--danger);
+}
+
+.compass-dir.e {
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.compass-dir.s {
+  bottom: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.compass-dir.w {
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.compass-arrow {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 18px solid #818cf8;
+  position: absolute;
+  top: calc(50% - 11px);
+  left: calc(50% - 5px);
+  transform-origin: 5px 11px;
+  transform: rotate(0deg);
+  transition: transform 0.1s ease-out;
 }
