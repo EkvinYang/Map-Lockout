@@ -36,6 +36,22 @@ app.get('/api/buildings', (req, res) => {
 // }
 const lobbies = {};
 
+function initializeGolfState() {
+  // Find a target hole at random (avoiding Richcraft Hall as the starting ball position)
+  const candidateHoles = BUILDINGS.filter(b => b.id !== 'richcraft');
+  const targetHole = candidateHoles.length > 0 
+    ? candidateHoles[Math.floor(Math.random() * candidateHoles.length)]
+    : BUILDINGS[0]; // fallback
+    
+  return {
+    ballLat: 45.38263922186898, // Richcraft Hall starting position
+    ballLng: -75.69619565975236,
+    holeLat: targetHole.lat,
+    holeLng: targetHole.lng,
+    holeName: targetHole.name
+  };
+}
+
 function generateRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Avoid lookalikes (O, 0, I, 1)
   let code = '';
@@ -103,7 +119,7 @@ function endGame(code, reason) {
   
   lobby.gameStarted = false;
   
-  // Determine winner
+  // Determine winner (lowest swing count wins in golf)
   const playerIds = Object.keys(lobby.players);
   let winnerId = 'tie';
   
@@ -112,15 +128,17 @@ function endGame(code, reason) {
   } else if (playerIds.length === 2) {
     const p1 = lobby.players[playerIds[0]];
     const p2 = lobby.players[playerIds[1]];
-    if (p1.score > p2.score) {
+    if (p1.swings < p2.swings) {
       winnerId = playerIds[0];
-    } else if (p2.score > p1.score) {
+    } else if (p2.swings < p1.swings) {
       winnerId = playerIds[1];
+    } else {
+      winnerId = 'tie';
     }
   }
   
   let reasonText = "Time has run out!";
-  if (reason === 'all-captured') reasonText = "All campus powerups have been captured!";
+  if (reason === 'golf-finished') reasonText = "The ball reached the target hole!";
   if (reason === 'opponent-disconnected') reasonText = "Your opponent disconnected from the game.";
 
   io.to(code).emit('game-over', {
@@ -148,7 +166,7 @@ io.on('connection', (socket) => {
     const code = generateRoomCode();
     lobbies[code] = {
       code,
-      gameMode: data.gameMode || 'lockout',
+      gameMode: 'golf',
       players: {
         [socket.id]: {
           username: data.username || 'Host',
@@ -166,12 +184,7 @@ io.on('connection', (socket) => {
       gameStarted: false,
       timeLeft: 300, // 5 minutes game duration
       timerInterval: null,
-      golfState: data.gameMode === 'golf' ? {
-        ballLat: 45.38263922186898,
-        ballLng: -75.69619565975236,
-        holeLat: 45.383395264680864,
-        holeLng: -75.6974631863349,
-      } : null
+      golfState: initializeGolfState()
     };
     
     socket.join(code);
@@ -184,7 +197,7 @@ io.on('connection', (socket) => {
     const code = generateRoomCode();
     lobbies[code] = {
       code,
-      gameMode: data.gameMode || 'lockout',
+      gameMode: 'golf',
       players: {
         [socket.id]: {
           username: data.username || 'Tester',
@@ -202,12 +215,7 @@ io.on('connection', (socket) => {
       gameStarted: true, // Start immediately
       timeLeft: 300,
       timerInterval: null,
-      golfState: data.gameMode === 'golf' ? {
-        ballLat: 45.38263922186898,
-        ballLng: -75.69619565975236,
-        holeLat: 45.383395264680864,
-        holeLng: -75.6974631863349,
-      } : null
+      golfState: initializeGolfState()
     };
     
     socket.join(code);
@@ -310,11 +318,13 @@ io.on('connection', (socket) => {
     // Reset players states
     for (const pid in lobby.players) {
       lobby.players[pid].score = 0;
+      lobby.players[pid].swings = 0;
       lobby.players[pid].multiplier = 1.0;
     }
     
-    // Reset powerup buildings
+    // Reset powerup buildings and select fresh random hole
     lobby.buildings = BUILDINGS.map(b => ({ ...b, capturedBy: null }));
+    lobby.golfState = initializeGolfState();
     
     io.to(roomCode).emit('game-started', {
       players: lobby.players,
@@ -365,61 +375,7 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Capture Powerup
-  socket.on('capture-powerup', (data) => {
-    let roomCode = null;
-    for (const code in lobbies) {
-      if (lobbies[code].players[socket.id]) {
-        roomCode = code;
-        break;
-      }
-    }
-    
-    if (!roomCode) return;
-    const lobby = lobbies[roomCode];
-    if (!lobby || !lobby.gameStarted) return;
-    
-    const player = lobby.players[socket.id];
-    const building = lobby.buildings.find(b => b.id === data.buildingId);
-    
-    // Guard: building does not exist or has already been captured
-    if (!building || building.capturedBy) return;
-    
-    // Process Capture Lockout
-    building.capturedBy = socket.id;
-    let scoreAddition = 0;
-    
-    if (building.powerup.type === 'points') {
-      scoreAddition = Math.round(building.powerup.value * player.multiplier);
-      player.score += scoreAddition;
-    } else if (building.powerup.type === 'multiplier') {
-      player.multiplier *= building.powerup.value;
-      // Small bonus score for multiplier capture
-      scoreAddition = 50;
-      player.score += scoreAddition;
-    }
-    
-    console.log(`[Capture] Room ${roomCode} | Player ${player.username} captured ${building.name} for +${scoreAddition} pts (Mult: ${player.multiplier.toFixed(1)}x)`);
-    
-    // Broadcast updated state to room
-    io.to(roomCode).emit('game-state-update', {
-      players: lobby.players,
-      buildings: lobby.buildings,
-      captureEvent: {
-        playerId: socket.id,
-        username: player.username,
-        buildingId: building.id,
-        buildingName: building.name,
-        powerupDesc: building.powerup.description
-      }
-    });
-    
-    // Check if all buildings have been captured
-    const allCaptured = lobby.buildings.every(b => b.capturedBy !== null);
-    if (allCaptured) {
-      endGame(roomCode, 'all-captured');
-    }
-  });
+  // Capture Powerup removed for Campus Golf mode
 
   // Golf Swing Action
   socket.on('golf-swing', (data) => {

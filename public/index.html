@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Map Lockout - Campus GPS Battle</title>
+  <title>Campus Golf - GPS Sports Battle</title>
   
   <!-- SEO & Mobile Config -->
-  <meta name="description" content="A real-time competitive campus multiplayer game. GPS tracking, capture powerups and lock out opponents!">
+  <meta name="description" content="A real-time competitive campus multiplayer GPS golf game. Swing your phone and reach the hole!">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   
@@ -40,8 +40,8 @@
   <div id="lobby-screen" class="screen active">
     <div class="glass-panel">
       <div class="logo-container">
-        <h1>MAP LOCKOUT</h1>
-        <p>Real-Time Campus GPS Conquest</p>
+        <h1>CAMPUS GOLF</h1>
+        <p>Real-Time Campus GPS Golf</p>
       </div>
 
       <div class="input-group">
@@ -50,17 +50,6 @@
       </div>
 
       <div style="display: flex; flex-direction: column; gap: 15px; width: 100%;">
-        <div class="input-group" style="margin-bottom: 0;">
-          <label class="input-label" style="text-align: center;">Select Game Mode</label>
-          <div style="display: flex; gap: 15px; justify-content: center; margin-top: 5px;">
-            <label style="color: var(--text-main); font-size: 0.9rem; cursor: pointer;">
-              <input type="radio" name="game-mode" value="lockout" checked> Conquest
-            </label>
-            <label style="color: var(--text-main); font-size: 0.9rem; cursor: pointer;">
-              <input type="radio" name="game-mode" value="golf"> Campus Golf
-            </label>
-          </div>
-        </div>
 
         <button id="btn-create-lobby" class="btn btn-accent">
           Create New Lobby
@@ -114,7 +103,7 @@
 
       <div style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
         <button id="btn-start-game" class="btn btn-accent" style="display: none;">
-          Start Campus Battle
+          Start Campus Golf
         </button>
         <div id="host-only-msg" style="font-size: 0.8rem; color: var(--text-muted); display: none;">
           Waiting for host to start the game...
@@ -131,34 +120,16 @@
 
     <!-- HUD Overlay Top: Scores & Timers -->
     <div class="game-overlay hud-top">
-      <!-- Left: Compact 0-0 Scoreboard -->
-      <div class="score-panel-left" id="hud-scoreboard-left">
-        <span class="score-lbl-compact">Conquest Score</span>
-        <div class="scoreboard-display">
-          <span id="score-me" class="score-val me">0</span>
-          <span id="hud-score-divider-main" class="score-dash">-</span>
-          <span id="score-opp" class="score-val opponent">0</span>
-        </div>
-      </div>
-
-      <!-- Left: Golf Scoreboard -->
-      <div class="score-panel-left" id="hud-golf-score-left" style="display: none;">
+      <!-- Left: Golf Scoreboard (Shown by default) -->
+      <div class="score-panel-left" id="hud-golf-score-left">
         <span class="score-lbl-compact">Swings Taken</span>
         <div class="scoreboard-display" style="justify-content: center;">
           <span id="golf-swings" class="score-val me">0</span>
         </div>
       </div>
       
-      <!-- Right: Timer and Dropdown Container -->
-      <div class="timer-and-dropdown-container">
-        <!-- Building Selection Dropdown -->
-        <div class="building-dropdown-panel">
-          <select id="building-selector" class="hud-select">
-            <option value="" disabled selected>Select Building...</option>
-          </select>
-          <div id="selected-building-desc" class="hud-building-desc">Select a building above for details.</div>
-        </div>
-
+      <!-- Right: Timer Container -->
+      <div class="timer-container">
         <!-- Timer Panel -->
         <div class="timer-panel">
           <span id="game-timer" class="time-val">05:00</span>
@@ -176,7 +147,8 @@
     <!-- HUD Overlay Bottom: Proximity indicators and center button -->
     <div class="game-overlay hud-bottom">
       <div class="bottom-card">
-        <div class="hud-row">
+        <!-- Lockout Mode HUD Details -->
+        <div class="hud-row" id="lockout-hud-row">
           <div class="hud-details">
             <div class="hud-detail-item">
               <span class="hud-detail-label">GPS Accuracy</span>
@@ -195,6 +167,20 @@
           <div id="proximity-container" class="proximity-indicator" style="display: none;">
             <div id="proximity-dot" class="proximity-pulse"></div>
             <span id="proximity-text">In Range</span>
+          </div>
+        </div>
+
+        <!-- Golf Mode HUD Details -->
+        <div class="hud-row" id="golf-hud-row" style="display: none; width: 100%;">
+          <div class="hud-details" style="width: 100%; justify-content: space-around; gap: 0;">
+            <div class="hud-detail-item" style="flex: 1; text-align: center;">
+              <span class="hud-detail-label" style="font-size: 0.8rem; letter-spacing: 0.5px;">Dist. to Ball</span>
+              <span id="dist-to-ball-display" class="hud-detail-val" style="font-size: 1.4rem; font-weight: 700; margin-top: 4px;">--</span>
+            </div>
+            <div class="hud-detail-item" style="border-left: 1px solid var(--glass-border); flex: 1; text-align: center;">
+              <span class="hud-detail-label" style="font-size: 0.8rem; letter-spacing: 0.5px;">Dist. to Hole</span>
+              <span id="dist-to-hole-display" class="hud-detail-val" style="font-size: 1.4rem; font-weight: 700; margin-top: 4px;">--</span>
+            </div>
           </div>
         </div>
 
@@ -218,8 +204,8 @@
   <div id="dialog-overlay" class="dialog-overlay" style="display: none;">
     <div class="dialog-card">
       <div class="logo-container">
-        <h2 id="dialog-header-title" class="dialog-title dialog-winner">CONQUEST COMPLETE</h2>
-        <p id="dialog-sub-title">Final Scores & Results</p>
+        <h2 id="dialog-header-title" class="dialog-title dialog-winner">GOLF MATCH COMPLETE</h2>
+        <p id="dialog-sub-title">Final Swing Results</p>
       </div>
 
       <div class="dialog-score-box">

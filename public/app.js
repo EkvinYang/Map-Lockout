@@ -32,7 +32,7 @@ const MAX_SPEED_MPS = 8; // Maximum plausible walking/jogging speed
 let smoothLat = null; // Exponentially-smoothed latitude
 let smoothLng = null; // Exponentially-smoothed longitude
 let lastGpsTimestamp = null;
-let currentGameMode = 'lockout';
+let currentGameMode = 'golf';
 let currentGolfState = null;
 let golfBallMarker = null;
 let golfHoleMarker = null; // Used to calculate dt between updates
@@ -82,9 +82,7 @@ let attemptedCaptures = new Set();
 const scoreMeMini = document.getElementById('score-me-mini');
 const scoreOppMini = document.getElementById('score-opp-mini');
 const hudScoreDividerMini = document.getElementById('hud-score-divider-mini');
-const buildingSelector = document.getElementById('building-selector');
-const selectedBuildingDesc = document.getElementById('selected-building-desc');
-const hudScoreboardLeft = document.getElementById('hud-scoreboard-left');
+// Conquest indicators removed
 const hudGolfScoreLeft = document.getElementById('hud-golf-score-left');
 const golfSwingsDisplay = document.getElementById('golf-swings');
 const swingWrapper = document.getElementById('swing-wrapper');
@@ -178,8 +176,7 @@ function showEventBanner(message, type = 'system') {
 
 // --- Socket Emitters ---
 function getSelectedGameMode() {
-  const selected = document.querySelector('input[name="game-mode"]:checked');
-  return selected ? selected.value : 'lockout';
+  return 'golf';
 }
 
 btnCreateLobby.addEventListener('click', () => {
@@ -263,54 +260,12 @@ socket.on('error-msg', (message) => {
 socket.on('game-started', (data) => {
   buildings = data.buildings;
   players = data.players;
-  currentGameMode = data.gameMode || 'lockout';
+  currentGameMode = 'golf';
   currentGolfState = data.golfState || null;
 
-  // Toggle HUD based on game mode
-  if (currentGameMode === 'golf') {
-    document.body.classList.add('golf-mode');
-    hudScoreboardLeft.style.display = 'none';
-    hudGolfScoreLeft.style.display = 'flex';
-    document.querySelector('.timer-and-dropdown-container').style.display = 'none';
-    const meId = socket.id;
-    golfSwingsDisplay.textContent = players[meId]?.swings || 0;
-  } else {
-    document.body.classList.remove('golf-mode');
-    hudScoreboardLeft.style.display = 'flex';
-    hudGolfScoreLeft.style.display = 'none';
-    document.querySelector('.timer-and-dropdown-container').style.display = 'flex';
-    
-    // Hide opponent score column in HUD if solo mode
-    const isSolo = Object.keys(players).length === 1;
-    const oppScoreText = document.getElementById('score-opp');
-    const mainScoreDivider = document.getElementById('hud-score-divider-main');
-    
-    if (isSolo) {
-      if (oppScoreText) oppScoreText.style.display = 'none';
-      if (mainScoreDivider) mainScoreDivider.style.display = 'none';
-      if (scoreOppMini) scoreOppMini.style.display = 'none';
-      if (hudScoreDividerMini) hudScoreDividerMini.style.display = 'none';
-    } else {
-      if (oppScoreText) oppScoreText.style.display = 'inline';
-      if (mainScoreDivider) mainScoreDivider.style.display = 'inline';
-      if (scoreOppMini) scoreOppMini.style.display = 'inline';
-      if (hudScoreDividerMini) hudScoreDividerMini.style.display = 'inline';
-    }
-
-    // Populate building selector dropdown
-    if (buildingSelector) {
-      buildingSelector.innerHTML = '<option value="" disabled selected>Select Building...</option>';
-      buildings.forEach(b => {
-        const opt = document.createElement('option');
-        opt.value = b.id;
-        opt.textContent = b.name;
-        buildingSelector.appendChild(opt);
-      });
-      if (selectedBuildingDesc) {
-        selectedBuildingDesc.textContent = 'Select a building above for details.';
-      }
-    }
-  }
+  document.body.classList.add('golf-mode');
+  const meId = socket.id;
+  golfSwingsDisplay.textContent = players[meId]?.swings || 0;
 
   showScreen('game');
   updateBuildingPins();
@@ -468,85 +423,43 @@ socket.on('location-broadcast', (data) => {
   }
 });
 
-// Score & building updates from server
-socket.on('game-state-update', (data) => {
-  const { players: updatedPlayers, buildings: updatedBuildings, captureEvent } = data;
-
-  // Sync local state
-  buildings = updatedBuildings;
-
-  // Update Scores
-  const me = updatedPlayers[socket.id];
-  const oppId = Object.keys(updatedPlayers).find(id => id !== socket.id);
-  const opp = oppId ? updatedPlayers[oppId] : null;
-
-  const meScoreRounded = Math.round(me ? me.score : 0);
-  const oppScoreRounded = Math.round(opp ? opp.score : 0);
-
-  scoreMe.textContent = meScoreRounded;
-  scoreOpp.textContent = oppScoreRounded;
-
-  if (scoreMeMini) scoreMeMini.textContent = meScoreRounded;
-  if (scoreOppMini) scoreOppMini.textContent = oppScoreRounded;
-
-  // Update building pin styles
-  updateBuildingPins();
-
-  // Display capture popups/feed if matching event
-  if (captureEvent) {
-    const isMe = captureEvent.playerId === socket.id;
-    const name = captureEvent.buildingName;
-    const desc = captureEvent.powerupDesc;
-
-    if (isMe) {
-      showEventBanner(`You reached ${name} first! ${desc}`, 'me');
-    } else {
-      showEventBanner(`${captureEvent.username} reached ${name} before you!`, 'opponent');
-    }
-  }
-});
+// Game state updates removed for Campus Golf mode
 
 socket.on('game-over', (data) => {
   const { players: finalPlayers, winnerId, reason } = data;
   const me = finalPlayers[socket.id];
   const oppId = Object.keys(finalPlayers).find(id => id !== socket.id);
   const opp = oppId ? finalPlayers[oppId] : null;
+  const isSolo = Object.keys(finalPlayers).length === 1;
 
-  if (currentGameMode === 'golf') {
-    finalScoreMe.textContent = `${me ? me.swings : 0} Swings`;
-    dialogSubTitle.textContent = `Reason: ${reason}`;
-    
-    document.querySelectorAll('.dialog-score-box > div')[1].style.display = 'none';
+  finalScoreMe.textContent = `${me ? me.swings : 0} Swings`;
+  dialogSubTitle.textContent = `Reason: ${reason}`;
+
+  const dialogScoreBoxDivs = document.querySelectorAll('.dialog-score-box > div');
+  if (isSolo) {
+    if (dialogScoreBoxDivs[1]) dialogScoreBoxDivs[1].style.display = 'none';
     
     dialogHeaderTitle.textContent = "⛳ HOLE IN!";
     dialogHeaderTitle.className = "dialog-title dialog-winner";
     dialogResultText.textContent = `You finished the hole in ${me ? me.swings : 0} swings!`;
   } else {
-    finalScoreMe.textContent = Math.round(me ? me.score : 0);
-    finalScoreOpp.textContent = opp ? Math.round(opp.score) : 0;
-
-    dialogSubTitle.textContent = `Reason: ${reason}`;
-
-    const isSolo = Object.keys(finalPlayers).length === 1;
-    const dialogScoreBoxDivs = document.querySelectorAll('.dialog-score-box > div');
-    if (isSolo) {
-      if (dialogScoreBoxDivs[1]) dialogScoreBoxDivs[1].style.display = 'none';
-    } else {
-      if (dialogScoreBoxDivs[1]) dialogScoreBoxDivs[1].style.display = 'block';
+    if (dialogScoreBoxDivs[1]) {
+      dialogScoreBoxDivs[1].style.display = 'block';
+      finalScoreOpp.textContent = `${opp ? opp.swings : 0} Swings`;
     }
-
+    
     if (winnerId === 'tie') {
       dialogHeaderTitle.textContent = "IT'S A DRAW!";
       dialogHeaderTitle.className = "dialog-title";
-      dialogResultText.textContent = "What a neck-and-neck race across campus! Good game!";
+      dialogResultText.textContent = "A neck-and-neck match! You finished with the same number of swings.";
     } else if (winnerId === socket.id) {
       dialogHeaderTitle.textContent = "🏆 VICTORY IS YOURS!";
       dialogHeaderTitle.className = "dialog-title dialog-winner";
-      dialogResultText.textContent = isSolo ? `Great training session! You captured all building powerups!` : `Incredible speed! You dominated the campus and claimed the crown.`;
+      dialogResultText.textContent = "Fantastic play! You completed the course in fewer swings.";
     } else {
       dialogHeaderTitle.textContent = "🥈 OPPONENT WINS";
       dialogHeaderTitle.className = "dialog-title dialog-loser";
-      dialogResultText.textContent = `Almost! Your opponent captured the critical buildings first. Better luck next time!`;
+      dialogResultText.textContent = "Almost! Your opponent completed the course in fewer swings.";
     }
   }
 
@@ -695,7 +608,7 @@ function updateBuildingPins() {
     
     const holeIcon = L.divIcon({
       className: 'map-pin-container',
-      html: getBuildingPinHtml('#10b981', '⛳ Hole'),
+      html: getBuildingPinHtml('#10b981', `⛳ Hole: ${currentGolfState.holeName || 'Target'}`),
       iconSize: [30, 42], iconAnchor: [15, 42]
     });
     golfHoleMarker = L.marker([currentGolfState.holeLat, currentGolfState.holeLng], { icon: holeIcon }).addTo(map);
@@ -941,11 +854,13 @@ function checkProximities() {
   const proximityLabel = document.getElementById('proximity-label');
 
   if (currentGameMode === 'golf' && currentGolfState) {
-    if (proximityLabel) proximityLabel.textContent = 'Golf Distances';
     const distToBall = calculateDistance(myLat, myLng, currentGolfState.ballLat, currentGolfState.ballLng);
     const distToHole = calculateDistance(currentGolfState.ballLat, currentGolfState.ballLng, currentGolfState.holeLat, currentGolfState.holeLng);
     
-    nearestBuildingName.innerHTML = `Ball: ${Math.round(distToBall)}m<br>Hole: ${Math.round(distToHole)}m`;
+    const distToBallDisplay = document.getElementById('dist-to-ball-display');
+    const distToHoleDisplay = document.getElementById('dist-to-hole-display');
+    if (distToBallDisplay) distToBallDisplay.textContent = `${Math.round(distToBall)}m`;
+    if (distToHoleDisplay) distToHoleDisplay.textContent = `${Math.round(distToHole)}m`;
 
     if (distToBall <= 50) {
       proximityContainer.style.display = 'flex';
@@ -1140,14 +1055,5 @@ window.addEventListener('DOMContentLoaded', () => {
   // Start tracking user location passively so the pin appears on the lobby map
   startTracking();
 
-  // Dropdown change listener
-  if (buildingSelector) {
-    buildingSelector.addEventListener('change', () => {
-      const selectedId = buildingSelector.value;
-      const selectedB = buildings.find(b => b.id === selectedId);
-      if (selectedB && selectedBuildingDesc) {
-        selectedBuildingDesc.textContent = `${selectedB.description || "No description."} (Powerup: ${selectedB.powerup.description})`;
-      }
-    });
-  }
+  // Dropdown change listener removed
 });
