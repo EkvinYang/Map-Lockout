@@ -1,0 +1,310 @@
+[
+  {
+    "code": "IH",
+    "name": "Advanced Capital Ice House",
+    "lat": 45.3854867705603,
+    "lng": -75.69334966,
+    "trivia": "Also known as the Carleton Ice House on official campus maps — doubles as a library storage facility, not just an ice rink."
+  },
+  {
+    "code": "AH",
+    "name": "Alumni Hall",
+    "lat": 45.38677226703888,
+    "lng": -75.69287499,
+    "trivia": "Sits near Southam Hall in the historic quad area of campus."
+  },
+  {
+    "code": "AF",
+    "name": "Andrew Fleck Childcare Centre",
+    "lat": 45.385621702307226,
+    "lng": -75.6936725,
+    "trivia": "On-campus childcare facility serving Carleton students, staff, and faculty with children."
+  },
+  {
+    "code": "AA",
+    "name": "Architecture Building",
+    "lat": 45.38415487921713,
+    "lng": -75.6974504,
+    "trivia": "Home of the Azrieli School of Architecture and Urbanism. Alum Paul Denham Austerberry (BArch '89) won an Academy Award for production design on Guillermo del Toro's The Shape of Water."
+  },
+  {
+    "code": "AR",
+    "name": "ARISE Building",
+    "lat": 45.381303457322765,
+    "lng": -75.69752043,
+    "trivia": "Stands for Advanced Research and Innovation in Smart Environments. Replaced the old Life Sciences Building — only the original two-storey structural shell was kept, then expanded vertically with new labs for health tech and clean tech research."
+  },
+  {
+    "code": "AC",
+    "name": "Athletics Building",
+    "lat": 45.38649347476524,
+    "lng": -75.69323163,
+    "trivia": "Home turf of the Carleton Ravens, whose men's basketball team has won 17 U Sports national championships — one of the most dominant programs in Canadian university sports history."
+  },
+  {
+    "code": "AP",
+    "name": "Azrieli Pavillion",
+    "lat": 45.38300328228717,
+    "lng": -75.69844347,
+    "trivia": "Funded by David Azrieli, an Israeli-Canadian real-estate billionaire who actually studied architecture at Carleton himself before becoming a major donor."
+  },
+  {
+    "code": "AT",
+    "name": "Azrieli Theater",
+    "lat": 45.38354292936509,
+    "lng": -75.69830327,
+    "trivia": "Also Azrieli-funded; houses several of the Architecture program's theatres (rooms 101, 102, 301, 303)."
+  },
+  {
+    "code": "CB",
+    "name": "Canal Building",
+    "lat": 45.38415709590767,
+    "lng": -75.6983757,
+    "trivia": "Opened in 2010 as part of a major campus expansion under Carleton's first female president, Roseann Runte."
+  },
+  {
+    "code": "TT",
+    "name": "Carleton Technology & Training Center",
+    "lat": 45.38465790717772,
+    "lng": -75.69268456,
+    "trivia": "A genuine one-stop-shop building: health services, the co-op office, a pharmacy, a dental clinic, and a café called 'Treats' all share the space."
+  },
+  {
+    "code": "DT",
+    "name": "Dunton Tower",
+    "lat": 45.38279554724297,
+    "lng": -75.69891009,
+    "trivia": "Carleton's tallest building at 22 storeys — one of the tallest in Ottawa. Completed 1972, originally called 'Arts Tower.' Named for A. Davidson Dunton, Carleton's longest-serving president, who also chaired the CBC."
+  },
+  {
+    "code": "FH",
+    "name": "Field House",
+    "lat": 45.38700585825397,
+    "lng": -75.69415431,
+    "trivia": "Carleton's indoor athletic field facility."
+  },
+  {
+    "code": "FR",
+    "name": "Frontenac House",
+    "lat": 45.386230814253246,
+    "lng": -75.6983532,
+    "trivia": "One of the residence houses named after Ontario counties in the Ottawa Valley. Added in 2008; suite-style, reserved for upper-year students."
+  },
+  {
+    "code": "GH",
+    "name": "Glengarry House",
+    "lat": 45.386721944985936,
+    "lng": -75.6970034,
+    "trivia": "Part of the same Ontario-counties residence naming set as Frontenac, Grenville, Lanark, and others."
+  },
+  {
+    "code": "GR",
+    "name": "Grenville House",
+    "lat": 45.38653975784128,
+    "lng": -75.69848118,
+    "trivia": "Same residence set — traditional double/single rooms across four floors."
+  },
+  {
+    "code": "HS",
+    "name": "Health Sciences Building",
+    "lat": 45.38353004396775,
+    "lng": -75.69631325,
+    "trivia": "Completed in 2018, another product of the Runte-era campus expansion."
+  },
+  {
+    "code": "HP",
+    "name": "Herzberg Building",
+    "lat": 45.38217059588242,
+    "lng": -75.69727665,
+    "trivia": "Named for Gerhard Herzberg, Carleton's former Chancellor (1973–80) and winner of the 1971 Nobel Prize in Chemistry — Canada's first Nobel laureate in the natural sciences. His four-volume reference work on molecular spectroscopy is nicknamed 'the spectroscopist's bible.'"
+  },
+  {
+    "code": "HC",
+    "name": "Human Computer Interaction Building",
+    "lat": 45.380885061711986,
+    "lng": -75.69921793,
+    "trivia": "Connected to the Architecture Building by an elevated catwalk for quick access between the two programs."
+  },
+  {
+    "code": "LH",
+    "name": "Lanark House",
+    "lat": 45.38581385807013,
+    "lng": -75.69755097,
+    "trivia": "One of Carleton's first two purpose-built residences (1962), originally reserved for male students only. In 1969, Carleton became the first university in North America to switch to fully co-ed residence housing."
+  },
+  {
+    "code": "LE",
+    "name": "Leeds House",
+    "lat": 45.38808985938852,
+    "lng": -75.69824073,
+    "trivia": "Part of the Ontario-counties residence set."
+  },
+  {
+    "code": "LX",
+    "name": "Lennox and Addington House",
+    "lat": 45.38652319212302,
+    "lng": -75.69670539,
+    "trivia": "Residence building opened in 2011 under the Runte-era expansion."
+  },
+  {
+    "code": "LA",
+    "name": "Loeb Building",
+    "lat": 45.38098838014505,
+    "lng": -75.69822958,
+    "trivia": "Named for Bertram Loeb, the grocery magnate who brought IGA franchises to Canada and donated $500,000 to Carleton in 1965. Home to the Music department and its instrument collection."
+  },
+  {
+    "code": "ME",
+    "name": "Mackenzie Building",
+    "lat": 45.38489297734113,
+    "lng": -75.69824444,
+    "trivia": "Named for Chalmers Jack Mackenzie, Carleton's second chancellor — who was also the first president of Atomic Energy of Canada Limited."
+  },
+  {
+    "code": "MB",
+    "name": "Maintenance Building",
+    "lat": 45.38449106984768,
+    "lng": -75.69452742,
+    "trivia": "Houses Carleton's physical plant operations, including shipping and receiving."
+  },
+  {
+    "code": "MC",
+    "name": "Minto Center for Advanced Studies in Engineering",
+    "lat": 45.385321740845356,
+    "lng": -75.69692939,
+    "trivia": "Engineering research building; also home to the Bell Theatre."
+  },
+  {
+    "code": "NW",
+    "name": "National Wildlife Research Building",
+    "lat": 45.38413654137956,
+    "lng": -75.69237027,
+    "trivia": "Run by Environment and Climate Change Canada. Home to the National Wildlife Specimen Bank — a repository of over 12,000 wildlife specimens from across Canada."
+  },
+  {
+    "code": "NB",
+    "name": "Nesbitt Biology Building",
+    "lat": 45.38410068755634,
+    "lng": -75.69327194,
+    "trivia": "Its climate-controlled greenhouses host an annual Butterfly Show every September/October that draws visitors from across Ottawa, not just students."
+  },
+  {
+    "code": "NI",
+    "name": "Nicol Building",
+    "lat": 45.38446741376025,
+    "lng": -75.69677599,
+    "trivia": "Completed 2021 at a cost of $65 million, largely funded by a major donation from Wes Nicol. The new home of the Sprott School of Business."
+  },
+  {
+    "code": "PG",
+    "name": "Parking Garage",
+    "lat": 45.38377514195015,
+    "lng": -75.6951403,
+    "trivia": "Campus parking structure."
+  },
+  {
+    "code": "PA",
+    "name": "Paterson Hall",
+    "lat": 45.38191376957529,
+    "lng": -75.69834521,
+    "trivia": "One of the original three campus buildings (1959, alongside Tory Building and MacOdrum Library). Named for Senator Norman Paterson; originally called the 'Arts Building.' It's the only one of the original three that hasn't been significantly altered since construction — and was recently flagged in Carleton's master plan as a candidate for demolition, despite its heritage value."
+  },
+  {
+    "code": "PH",
+    "name": "Prescott House",
+    "lat": 45.385681558871035,
+    "lng": -75.69713786,
+    "trivia": "Part of the Ontario-counties residence set."
+  },
+  {
+    "code": "RH",
+    "name": "Renfrew House",
+    "lat": 45.386226013713326,
+    "lng": -75.69716694,
+    "trivia": "The other of Carleton's first two purpose-built residences (1962), originally reserved for female students only, alongside the male-only Lanark House."
+  },
+  {
+    "code": "RB",
+    "name": "Richcraft Hall",
+    "lat": 45.382782340483374,
+    "lng": -75.69574108,
+    "trivia": "Originally called the 'River Building' when it opened in 2011, renamed Richcraft Hall in 2016 after a major donation from Richcraft Homes. Home to Journalism, Public Policy, and NPSIA (Norman Paterson School of International Affairs)."
+  },
+  {
+    "code": "RI",
+    "name": "Rideau House",
+    "lat": 45.3883504256896,
+    "lng": -75.69757396,
+    "trivia": "Carleton's newest building, inaugurated in 2025 — the most recent addition to campus."
+  },
+  {
+    "code": "RU",
+    "name": "Russell House",
+    "lat": 45.386944348758924,
+    "lng": -75.69823775,
+    "trivia": "Part of the Ontario-counties residence set."
+  },
+  {
+    "code": "SR",
+    "name": "Social Science Research Building",
+    "lat": 45.38061610400263,
+    "lng": -75.69995664,
+    "trivia": "Not connected to the tunnel system — in winter, students are advised to route through the Loeb Building instead."
+  },
+  {
+    "code": "SA",
+    "name": "Southam Hall",
+    "lat": 45.38130624179447,
+    "lng": -75.69947298,
+    "trivia": "Named for Harry Southam, publisher of the Ottawa Citizen and Carleton's first chancellor, who personally donated half the land the entire campus is built on. Home to Carleton's largest lecture hall, the 444-seat Kailash Mital Theatre."
+  },
+  {
+    "code": "SP",
+    "name": "St Patricks Building",
+    "lat": 45.38762910490989,
+    "lng": -75.69825267,
+    "trivia": "Formerly Saint Patrick's College, a Catholic liberal arts college founded by the Missionary Oblates of Mary Immaculate — it became formally affiliated with Carleton in 1967."
+  },
+  {
+    "code": "SC",
+    "name": "Steacie Building",
+    "lat": 45.38289540466157,
+    "lng": -75.69638622,
+    "trivia": "Named for E.W.R. Steacie, a distinguished chemist who chaired Carleton's board of governors and served as president of the National Research Council."
+  },
+  {
+    "code": "SD",
+    "name": "Stormont and Dundas House",
+    "lat": 45.38794467403235,
+    "lng": -75.69758652,
+    "trivia": "Part of the Ontario-counties residence set."
+  },
+  {
+    "code": "TD",
+    "name": "Tennis Center",
+    "lat": 45.38814545928469,
+    "lng": -75.69439353,
+    "trivia": "Campus tennis facility."
+  },
+  {
+    "code": "TC",
+    "name": "Teraanga Commons",
+    "lat": 45.387009466501475,
+    "lng": -75.696108,
+    "trivia": "Renamed in 2022 from 'Residence Commons' after a community-led process with African, Caribbean, and Black communities on campus. 'Teraanga' is a Senegalese Wolof word meaning sharedness and generosity of spirit. The building now features two Afrofuturist murals by artist Jimmy Baptiste."
+  },
+  {
+    "code": "TB",
+    "name": "Tory Building",
+    "lat": 45.38296851950298,
+    "lng": -75.69791298,
+    "trivia": "The very first building on campus, built 1959. Named for Henry Marshall Tory, Carleton's founding president — who took the job unpaid."
+  },
+  {
+    "code": "VS",
+    "name": "Visualization & Simulation Building",
+    "lat": 45.380735560080495,
+    "lng": -75.70020489,
+    "trivia": "Houses Carleton's visualization and simulation research facilities."
+  }
+]
