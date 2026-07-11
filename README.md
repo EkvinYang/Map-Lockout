@@ -1,4 +1,4 @@
-#CampusGolf ⛳
+# CampusGolf ⛳
 
 Real-time phone golf across Carleton University's campus — built at cuHacking 7 (July 2026).
 
