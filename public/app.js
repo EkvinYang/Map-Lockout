@@ -86,6 +86,7 @@ const hudScoreDividerMini = document.getElementById('hud-score-divider-mini');
 const golfSwingsDisplay = document.getElementById('golf-swings');
 const swingWrapper = document.getElementById('swing-wrapper');
 const btnSwingAction = document.getElementById('btn-swing-action');
+const compassArrow = document.getElementById('compass-arrow');
 
 // IMU Swing Variables
 let swingState = 'IDLE'; // 'IDLE', 'WAITING', 'RECORDING'
@@ -736,14 +737,13 @@ function startTracking() {
         const blueDotIcon = L.divIcon({
           className: 'custom-player-pin',
           html: getPlayerIconHtml('#6366f1', myHeading),
-          iconSize: [20, 20],
-          iconAnchor: [10, 10]
+          iconSize: [24, 24],
+          iconAnchor: [12, 12]
         });
 
         if (!myMarker) {
           map.setView([myLat, myLng], 18);
           myMarker = L.marker([myLat, myLng], { icon: blueDotIcon }).addTo(map);
-          myMarker.bindTooltip(`You (Facing: ${dirString})`, { permanent: true, direction: 'top', className: 'hud-tooltip' });
           targetLat = myLat;
           targetLng = myLng;
 
@@ -756,7 +756,6 @@ function startTracking() {
           }).addTo(map);
         } else {
           myMarker.setIcon(blueDotIcon);
-          myMarker.setTooltipContent(`You (Facing: ${dirString})`);
           // Set up glide animation toward new smoothed position
           const current = myMarker.getLatLng();
           animStartLat = current.lat;
@@ -935,40 +934,51 @@ btnCenterGameMap.addEventListener('click', () => {
 
 // --- Compass & Direction Helper Functions ---
 
-/**
- * Returns an HTML string for a player marker with a direction arrow.
- * @param {string} color - Hex color for the dot (e.g. '#6366f1')
- * @param {number} heading - Degrees from North (0-360)
- */
 function getPlayerIconHtml(color, heading) {
   const headingDeg = isNaN(heading) ? 0 : heading;
-  // The outer div contains a dot and an arrow triangle that rotates around the dot.
   return `
-    <div style="position: relative; width: 20px; height: 20px;">
-      <!-- Direction arrow -->
+    <div style="position: relative; width: 24px; height: 24px;">
+      <!-- Blue field-of-view cone -->
+      <div style="
+        position: absolute;
+        bottom: 50%;
+        left: 50%;
+        width: 60px;
+        height: 60px;
+        background: radial-gradient(circle at 50% 100%, rgba(99, 102, 241, 0.4) 0%, rgba(99, 102, 241, 0) 80%);
+        clip-path: polygon(50% 100%, 20% 0%, 80% 0%);
+        transform-origin: 50% 100%;
+        transform: translateX(-50%) rotate(${headingDeg}deg);
+        pointer-events: none;
+      "></div>
+      
+      <!-- Outer border/circle path -->
       <div style="
         position: absolute;
         top: 50%;
         left: 50%;
-        width: 0;
-        height: 0;
-        border-left: 4px solid transparent;
-        border-right: 4px solid transparent;
-        border-bottom: 10px solid ${color};
-        transform-origin: 0px 6px;
-        transform: translate(-50%, -100%) translate(0px, -4px) rotate(${headingDeg}deg);
-        opacity: 0.9;
+        width: 24px;
+        height: 24px;
+        border: 2px solid ${color};
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        opacity: 0.4;
+        pointer-events: none;
       "></div>
-      <!-- Center dot -->
+      
+      <!-- Center point -->
       <div style="
         position: absolute;
-        top: 50%; left: 50%;
-        width: 14px; height: 14px;
+        top: 50%;
+        left: 50%;
+        width: 10px;
+        height: 10px;
         background-color: ${color};
-        border: 3px solid white;
+        border: 2px solid white;
         border-radius: 50%;
-        box-shadow: 0 0 10px ${color}, 0 0 20px ${color}55;
         transform: translate(-50%, -50%);
+        box-shadow: 0 0 6px ${color};
+        pointer-events: none;
       "></div>
     </div>
   `;
@@ -1027,17 +1037,20 @@ function onDeviceOrientation(event) {
     myHeading = ((360 - event.alpha) % 360);
   }
 
+  // Update compass arrow rotation
+  if (compassArrow) {
+    compassArrow.style.transform = `rotate(${myHeading}deg)`;
+  }
+
   // Update own marker heading immediately on the map for responsive rotation
   if (map && myMarker) {
-    const dirString = getCompassDirection(myHeading);
     const blueDotIcon = L.divIcon({
       className: 'custom-player-pin',
       html: getPlayerIconHtml('#6366f1', myHeading),
-      iconSize: [20, 20],
-      iconAnchor: [10, 10]
+      iconSize: [24, 24],
+      iconAnchor: [12, 12]
     });
     myMarker.setIcon(blueDotIcon);
-    myMarker.setTooltipContent(`You (Facing: ${dirString})`);
   }
 }
 
