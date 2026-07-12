@@ -1,96 +1,121 @@
 # CampusGolf ⛳
 
-Real-time phone golf across Carleton University's campus — built at cuHacking 7 (July 2026).
+**Turn your phone into a golf club and Carleton University into the course.**
 
-<!-- TODO: replace with final game name if "Map-Lockout" isn't sticking -->
+CampusGolf is a real-time, location-based golf game built at cuHacking 7 in July 2026.
 
 ## What it is
 
-Players get a starting location and a golf "cup" somewhere else on campus, both real GPS coordinates. Take a swing by physically moving your phone — strength comes from the phone's motion sensors — and the ball travels toward the target. Walk to wherever it landed, swing again, repeat until it's in the cup.
+CampusGolf places a golf ball and a target hole at real locations across Carleton University's campus.
 
-As you walk across campus, the game recognizes real Carleton buildings and surfaces facts about them.
+When a player reaches their ball, they physically swing their phone to take a shot. Swing strength is calculated using the phone's motion sensors, while shot direction comes from the phone's heading. The ball's new GPS position is calculated by the server and synchronized between players.
 
-## Features
+Players then walk to wherever the ball landed and swing again until they reach the target.
 
-- **Live GPS tracking** — real-time position over WebSockets, rendered on a Leaflet/OpenStreetMap map
-- **Motion-based swing detection** — physically swing your phone; strength and distance are calculated from real accelerometer data (with a practice-swing mode to preview before committing)
-- **Building collision** — the ball bounces off real campus buildings using their actual footprints, encouraging players to stay outside
-- **Proximity-based campus trivia** — walk within range of any of 44 real Carleton buildings and get a genuine, researched fact about it (naming history, notable alumni, hidden campus lore)
+CampusGolf supports both solo testing and two-player matches.
 
+## How to play
+
+1. Enter a username and create a lobby, join an existing lobby, or start a solo test.
+2. In multiplayer, share the four-character lobby code with another player.
+3. Walk to your golf ball's current GPS location.
+4. Press the swing button and physically swing your phone.
+5. Follow the ball across campus and repeat until it reaches the target building.
+6. Complete the course in as few swings as possible before time runs out.
+
+## Current features
+
+- **Live GPS positioning**  
+  Tracks player locations using the browser Geolocation API and displays them on a Leaflet map.
+
+- **Motion-controlled swings**  
+  Uses phone accelerometer data to estimate swing strength.
+
+- **Directional shots**  
+  Uses the phone's heading to determine shot direction, with server-side aim assistance.
+
+- **Two-player multiplayer**  
+  Create and join private lobbies using a short room code.
+
+- **Real-time synchronization**  
+  Player locations, ball positions, swing counts, timers, and match state are synchronized using Socket.IO.
+
+- **Solo test mode**  
+  Test the full course without waiting for a second player.
+
+- **Location-based gameplay**  
+  Players must physically reach their ball before they can take another swing.
+
+- **Random campus targets**  
+  Each course selects a Carleton building as the target hole and calculates a par based on its distance from the starting point.
+
+- **Match results**  
+  Displays course completion, stroke count, score relative to par, elapsed time, and multiplayer victory or defeat.
+
+- **GPS smoothing**  
+  Filters implausible GPS jumps and smooths marker movement to reduce location jitter.
+
+## Campus data
+
+The repository contains coordinates and researched historical information for 44 Carleton University buildings.
+
+A standalone proximity-trivia module uses the Haversine formula to detect when a player walks near a building and prevents the same fact from being repeatedly triggered.
+
+The building dataset and proximity detector are complete, but full trivia display integration is still future work.
 
 ## Tech stack
 
-- Frontend: Leaflet.js (map), vanilla JS
-- Backend: Node.js, WebSockets (live position + game state sync)
-- Data: 44 Carleton campus buildings with real coordinates and researched facts
+### Frontend
 
-<!-- TODO: confirm/add anything else in the stack (hosting, ngrok for demo, etc.) -->
+- HTML
+- CSS
+- Vanilla JavaScript
+- Leaflet.js
+- OpenStreetMap and CARTO map tiles
+- Browser Geolocation API
+- Browser Device Motion and Device Orientation APIs
+
+### Backend
+
+- Node.js
+- Express
+- Socket.IO
+
+### Data
+
+- Building coordinates and metadata stored in JavaScript and JSON
+- Researched trivia for 44 Carleton University buildings
 
 ## Project structure
 
-```
-buildings.json          # 44 campus buildings: code, name, lat/lng, trivia fact
-proximity-trivia.js     # fires trivia when a player walks near a building (Haversine distance check)
-commentary.js           # Gemini-powered live commentary on swing/landing/sink events
-detect-swing.js         # phone motion sensor → swing strength/direction
-<!-- TODO: fill in remaining files, e.g. server.js, index.html, whatever handles GPS/socket state -->
-```
+```text
+server.js
+    Express and Socket.IO server
+    Lobby creation and multiplayer synchronization
+    Golf-course generation, timers, scoring, and ball movement
 
-## Setup & Running the Game
+public/
+    index.html
+        Main game interface
 
-### Prerequisites & Required Downloads
-- **Node.js**: Make sure you have [Node.js](https://nodejs.org/) installed (v16 or higher is recommended).
+    app.js
+        GPS tracking, map rendering, swing detection, lobby controls,
+        ball animations, and client-side game state
 
-### Installation & Run Steps
-1. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/EkvinYang/Map-Lockout.git
-   cd Map-Lockout
-   ```
-2. **Install Dependencies**:
-   ```bash
-   npm install
-   ```
-3. **Start the Server**:
-   ```bash
-   node server.js
-   ```
-   The server will start on port `3000`. You can access the interface in your browser at `http://localhost:3000`.
+    style.css
+        Mobile interface and game styling
 
-### Mobile GPS & Motion Sensor Testing (Required)
-Since this game relies on the **Geolocation API** (GPS) and **DeviceMotion API** (accelerometer for swings), modern browsers **require a secure context (HTTPS)** to allow access on mobile devices.
-To test the game on a phone:
-1. Run a tunnel service like **ngrok** to forward port `3000`:
-   ```bash
-   ngrok http 3000
-   ```
-2. Open the generated **HTTPS** URL (e.g., `https://xxxx-xx-xx.ngrok-free.app`) on your mobile device.
+    test_gps.html
+        GPS and Socket.IO testing interface
 
----
+buildings.js
+    Building data used by the server
 
-### Optional: AI Commentary (Gemini)
-If you want live AI commentary, configure your Gemini API Key before starting the server:
-```bash
-# Get a key at aistudio.google.com
-export GEMINI_API_KEY="your-key-here"
-```
-If the key is not set, the game will automatically fall back to pre-defined commentary cues.
+buildings.json
+    Building coordinates and researched trivia
 
+proximity-trivia.js
+    Standalone proximity-based trivia detector
 
-## Team
-
-<!-- TODO: confirm names + GitHub handles -->
-- RoboRaccoon
-- EkvinYang
-- vot314
-- vutum-labs
-
-## Built for
-
-cuHacking 7, Carleton University's official hackathon — July 2026. 
-
-## Challenges
-
-- **Losing our first direction** — we started building a GPS-based powerup battle game, then pivoted to phone golf partway through the weekend once we realized it reused the same GPS/WebSocket foundation more directly and was more buildable in the time we had. The pivot cost time, but the underlying positioning code carried over rather than being wasted.
-- **Getting real trivia, not invented trivia** — researching genuine facts for 44 campus buildings without fabricating anything to fill gaps. A lot of the "obvious" search results turned out to be about a completely different school (Carleton College in Minnesota, not Carleton University), so verifying the right school behind every fact took real care.
-- **AI integration didn't fully land** — `commentary.js` genuinely calls the Gemini API and works standalone, but we didn't get it confirmed wired into and running on the live server in time for submission. It's real, tested code — just not confirmed live in the final build.
+commentary.js
+    Lightweight fallback commentary for swing and course events
