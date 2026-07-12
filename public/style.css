@@ -927,6 +927,7 @@ input[type="text"]:focus {
   border-right: none !important;
   border-bottom: none !important;
   border-top: 1px solid var(--glass-border) !important;
+  background: rgba(17, 24, 39, 0.95) !important; /* solid matching color */
   padding: 18px 20px calc(70px + env(safe-area-inset-bottom)) 20px !important;
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4) !important;
 }
@@ -988,7 +989,7 @@ input[type="text"]:focus {
   z-index: 1000;
   display: flex;
   justify-content: center;
-  background: var(--glass-bg);
+  background: rgba(17, 24, 39, 0.95) !important; /* solid dark background to prevent diagonal gradient bleed */
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--glass-border);
@@ -1136,7 +1137,6 @@ input[type="text"]:focus {
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
 }
 
-<<<<<<< HEAD
 .grey-name-tag:hover {
   background: rgba(100, 100, 100, 0.95);
   transform: translateY(-2px);
@@ -1212,6 +1212,10 @@ input[type="text"]:focus {
    Lobby Main Menu Custom Redesign (Aesthetic Match with Gameplay UI)
    ========================================================================== */
 
+#lobby-screen {
+  background: rgba(0, 0, 0, 0.45) !important;
+}
+
 #lobby-screen,
 #lobby-screen * {
   font-family: 'Share Tech Mono', 'Courier New', Courier, monospace !important;
@@ -1231,6 +1235,7 @@ input[type="text"]:focus {
   letter-spacing: 2px;
   background: linear-gradient(135deg, #ffffff 0%, #818cf8 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   margin-bottom: 5px;
 }
@@ -1311,11 +1316,9 @@ input[type="text"]:focus {
   background: rgba(245, 158, 11, 0.25) !important;
   box-shadow: 0 0 20px rgba(245, 158, 11, 0.25) !important;
 }
-
 #lobby-screen .or-divider {
   font-size: 0.8rem;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
-}
 }

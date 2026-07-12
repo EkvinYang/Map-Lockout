@@ -636,7 +636,7 @@ function updateBuildingPins() {
     
     const holeIcon = L.divIcon({
       className: 'map-pin-container',
-      html: getBuildingPinHtml('#10b981', `⛳ Hole: ${currentGolfState.holeName || 'Target'}`),
+      html: getBuildingPinHtml('#10b981', currentGolfState.holeName || 'Target'),
       iconSize: [30, 42], iconAnchor: [15, 42]
     });
     golfHoleMarker = L.marker([currentGolfState.holeLat, currentGolfState.holeLng], { icon: holeIcon }).addTo(map);
