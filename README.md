@@ -38,14 +38,14 @@ detect-swing.js         # phone motion sensor → swing strength/direction
 
 ## Setup
 
-### AI features (trivia + commentary)
-```bash
+### AI commentary (Gemini)
+\`\`\`bash
 npm install @google/genai
 export GEMINI_API_KEY="your-key-here"   # get one free at aistudio.google.com
-```
-Both `commentary.js` and the trivia system fall back to canned lines if the Gemini call fails or the key isn't set, so a missing key won't crash the game — but it also won't be genuinely AI-powered without it. Make sure `GEMINI_API_KEY` is set wherever the server actually runs, not just locally.
+\`\`\`
+`commentary.js` calls the Gemini API directly and falls back to canned lines if the call fails or the key isn't set — a missing key won't crash the game, but the commentary won't be genuinely AI-generated without it. Make sure `GEMINI_API_KEY` is set wherever the server actually runs, not just locally.
 
-<!-- TODO: full run instructions for the whole app (npm install, npm start, port, etc.) -->
+The proximity trivia system doesn't call Gemini at all — it reads directly from `buildings.json`, so it works the same regardless of whether the API key is set.
 
 ## Team
 
