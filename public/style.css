@@ -966,7 +966,7 @@ input[type="text"]:focus {
   max-width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+  background: var(--accent-primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1311,7 +1311,9 @@ input[type="text"]:focus {
 }
 
 .offscreen-indicator.self .indicator-dot {
-  background-color: #818cf8;
+  background-color: transparent;
+  border: 3px solid #818cf8;
+  box-sizing: border-box;
   box-shadow: 0 0 6px rgba(129, 140, 248, 0.6);
 }
 
@@ -1623,4 +1625,14 @@ input[type="text"]:focus {
 
 #waiting-screen #btn-leave-lobby:hover {
   background: rgba(255, 255, 255, 0.1) !important;
+}
+
+#btn-dialog-close {
+  background: var(--accent-primary) !important;
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3) !important;
+}
+
+#btn-dialog-close:hover {
+  background: #4f46e5 !important;
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45) !important;
 }
