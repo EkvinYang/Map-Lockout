@@ -1073,7 +1073,7 @@ input[type="text"]:focus {
   right: auto !important;
   bottom: auto !important;
   z-index: 10000 !important;
-  background: var(--glass-bg) !important;
+  background: rgba(17, 24, 39, 0.95) !important;
   backdrop-filter: blur(12px) !important;
   -webkit-backdrop-filter: blur(12px) !important;
   border: 1px solid var(--glass-border) !important;
@@ -1248,6 +1248,37 @@ input[type="text"]:focus {
   transition: all 0.2s ease;
 }
 
+/* Off-screen target pointers */
+.offscreen-indicators-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 10010 !important; /* render on top of proximity alerts */
+  pointer-events: none;
+}
+
+.offscreen-indicator {
+  position: absolute;
+  pointer-events: auto;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 50%;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transform: translate(-50%, -50%);
+  transition: top 0.1s ease-out, left 0.1s ease-out;
+}
+
 .offscreen-indicator.self {
   border-color: rgba(99, 102, 241, 0.6);
 }
@@ -1318,7 +1349,8 @@ input[type="text"]:focus {
    ========================================================================== */
 
 #lobby-screen {
-  background: rgba(0, 0, 0, 0.45) !important;
+  background: linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.45)), url('/images/background_1.png') no-repeat center center !important;
+  background-size: cover !important;
 }
 
 #lobby-screen,
@@ -1332,6 +1364,17 @@ input[type="text"]:focus {
   background: var(--glass-bg) !important;
   border: 1px solid var(--glass-border) !important;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
+  overflow: hidden !important; /* clip top logo background to rounded corners */
+}
+
+#lobby-screen .logo-container {
+  margin: -35px -32px -10px -32px !important;
+  padding: 35px 32px 20px 32px !important;
+  width: calc(100% + 64px) !important;
+  background: linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.45)), url('/images/background_2.png') no-repeat top center !important;
+  background-size: cover !important;
+  border-bottom: 1px solid var(--glass-border) !important;
+  text-align: center;
 }
 
 #lobby-screen h1 {
@@ -1342,7 +1385,9 @@ input[type="text"]:focus {
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  margin-bottom: 5px;
+  margin-top: 0 !important; /* remove default browser margin-top */
+  margin-bottom: 5px !important;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.95)) !important; /* drop shadow compatible with background-clip text */
 }
 
 #lobby-screen .logo-container p {
@@ -1350,6 +1395,7 @@ input[type="text"]:focus {
   font-size: 0.9rem;
   text-transform: uppercase;
   letter-spacing: 1px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9) !important;
 }
 
 #lobby-screen .input-label {
@@ -1370,6 +1416,11 @@ input[type="text"]:focus {
   padding: 12px !important;
   width: 100% !important;
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5) !important;
+}
+
+#lobby-screen input[type="text"]::placeholder {
+  font-size: 0.85rem !important;
+  color: rgba(255, 255, 255, 0.4) !important;
 }
 
 #lobby-screen input[type="text"]:focus {
@@ -1426,4 +1477,120 @@ input[type="text"]:focus {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
+}
+
+/* ==========================================================================
+   Lobby Waiting Room Custom Redesign (Aesthetic Match with Gameplay/Lobby UI)
+   ========================================================================== */
+
+#waiting-screen {
+  background: linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.45)), url('/images/background_1.png') no-repeat center center !important;
+  background-size: cover !important;
+}
+
+#waiting-screen,
+#waiting-screen * {
+  font-family: 'Share Tech Mono', 'Courier New', Courier, monospace !important;
+}
+
+#waiting-screen .glass-panel {
+  border-radius: 12px !important; /* slightly rounded rectangular */
+  margin-top: -70px; /* raise the menu screen up slightly */
+  background: var(--glass-bg) !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
+}
+
+#waiting-screen h1 {
+  font-size: 2.2rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  background: linear-gradient(135deg, #ffffff 0%, #818cf8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 5px;
+}
+
+#waiting-screen .logo-container p {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+#waiting-screen .room-code-box {
+  background: rgba(0, 0, 0, 0.4) !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: 6px !important;
+}
+
+#waiting-screen .room-code-label {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #818cf8;
+}
+
+#waiting-screen .room-code {
+  font-size: 2.2rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 4px !important;
+  color: #ffffff !important;
+}
+
+#waiting-screen .player-list h3 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #818cf8;
+  margin-bottom: 8px;
+}
+
+#waiting-screen .player-row {
+  background: rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: 6px !important;
+  padding: 10px 12px !important;
+}
+
+#waiting-screen .player-avatar {
+  border-radius: 4px !important;
+}
+
+#waiting-screen .player-status-badge {
+  border-radius: 4px !important;
+  font-size: 0.75rem !important;
+}
+
+#waiting-screen .btn {
+  border-radius: 8px !important;
+  padding: 14px 20px !important;
+  font-size: 1rem !important;
+  font-weight: normal !important;
+  letter-spacing: 1px !important;
+  text-transform: uppercase !important;
+  transition: all 0.2s ease !important;
+}
+
+#waiting-screen #btn-start-game {
+  background: rgba(99, 102, 241, 0.2) !important;
+  border: 1px solid #6366f1 !important;
+  color: #818cf8 !important;
+  box-shadow: 0 0 15px rgba(99, 102, 241, 0.15) !important;
+}
+
+#waiting-screen #btn-start-game:hover {
+  background: rgba(99, 102, 241, 0.3) !important;
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.3) !important;
+}
+
+#waiting-screen #btn-leave-lobby {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid var(--glass-border) !important;
+  color: #ffffff !important;
+}
+
+#waiting-screen #btn-leave-lobby:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
 }
