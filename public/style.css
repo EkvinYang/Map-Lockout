@@ -1120,3 +1120,31 @@ input[type="text"]:focus {
   transform: rotate(0deg);
   transition: transform 0.1s ease-out;
 }
+
+/* Grey Name Tag for Buildings */
+.grey-name-tag-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.grey-name-tag {
+  background: rgba(80, 80, 80, 0.85);
+  backdrop-filter: blur(4px);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  white-space: nowrap;
+  pointer-events: auto;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+}
+
+.grey-name-tag:hover {
+  background: rgba(100, 100, 100, 0.95);
+  transform: translateY(-2px);
+  transition: all 0.2s ease;
+}

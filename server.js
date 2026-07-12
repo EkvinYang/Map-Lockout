@@ -3,7 +3,21 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const BUILDINGS = require('./buildings');
+const { generateCommentary } = require('./commentary');
 
+const REACH_DISTANCE = parseInt(process.env.REACH_DISTANCE) || 50;
+
+function calculateDistanceServer(lat1, lon1, lat2, lon2) {
+  const R = 6371000; // Radius of Earth in meters
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
@@ -39,10 +53,10 @@ const lobbies = {};
 function initializeGolfState() {
   // Find a target hole at random (avoiding Richcraft Hall as the starting ball position)
   const candidateHoles = BUILDINGS.filter(b => b.id !== 'richcraft');
-  const targetHole = candidateHoles.length > 0 
+  const targetHole = candidateHoles.length > 0
     ? candidateHoles[Math.floor(Math.random() * candidateHoles.length)]
     : BUILDINGS[0]; // fallback
-    
+
   return {
     ballLat: 45.38263922186898, // Richcraft Hall starting position
     ballLng: -75.69619565975236,
@@ -67,16 +81,16 @@ function generateRoomCode() {
 // Helper to remove socket from lobbies
 function leaveActiveLobby(socket) {
   let lobbyCodeToClean = null;
-  
+
   for (const code in lobbies) {
     if (lobbies[code].players[socket.id]) {
       lobbyCodeToClean = code;
       const player = lobbies[code].players[socket.id];
       console.log(`[Lobby] Player ${player.username} (${socket.id}) leaving room ${code}`);
-      
+
       delete lobbies[code].players[socket.id];
       socket.leave(code);
-      
+
       const remainingIds = Object.keys(lobbies[code].players);
       if (remainingIds.length === 0) {
         // Stop timer and delete empty lobby
@@ -92,10 +106,10 @@ function leaveActiveLobby(socket) {
           lobbies[code].players[nextHostId].isHost = true;
           console.log(`[Lobby] Host left. Transferred Host role to ${lobbies[code].players[nextHostId].username}`);
         }
-        
+
         // Notify remaining player
         io.to(code).emit('player-updated', { players: lobbies[code].players });
-        
+
         if (lobbies[code].gameStarted) {
           // End game if someone disconnected mid-game
           endGame(code, 'opponent-disconnected');
@@ -110,19 +124,19 @@ function leaveActiveLobby(socket) {
 function endGame(code, reason) {
   const lobby = lobbies[code];
   if (!lobby) return;
-  
+
   // Clear game timer loop
   if (lobby.timerInterval) {
     clearInterval(lobby.timerInterval);
     lobby.timerInterval = null;
   }
-  
+
   lobby.gameStarted = false;
-  
+
   // Determine winner (lowest swing count wins in golf)
   const playerIds = Object.keys(lobby.players);
   let winnerId = 'tie';
-  
+
   if (playerIds.length === 1) {
     winnerId = playerIds[0];
   } else if (playerIds.length === 2) {
@@ -136,7 +150,7 @@ function endGame(code, reason) {
       winnerId = 'tie';
     }
   }
-  
+
   let reasonText = "Time has run out!";
   if (reason === 'golf-finished') reasonText = "The ball reached the target hole!";
   if (reason === 'opponent-disconnected') reasonText = "Your opponent disconnected from the game.";
@@ -146,12 +160,13 @@ function endGame(code, reason) {
     winnerId,
     reason: reasonText
   });
-  
+
   console.log(`[Game Over] Room ${code} ended: ${reasonText}. Winner: ${winnerId}`);
 }
 
 io.on('connection', (socket) => {
   console.log(`[Socket] Device connected: ${socket.id}`);
+  socket.emit('server-config', { reachDistance: REACH_DISTANCE });
 
   // --- Phase 1: Simple GPS Test ---
   socket.on('test-gps-update', (data) => {
@@ -160,7 +175,7 @@ io.on('connection', (socket) => {
   });
 
   // --- Phase 2: Multiplayer & Lobby System ---
-  
+
   // Create Lobby
   socket.on('create-lobby', (data) => {
     const code = generateRoomCode();
@@ -186,7 +201,7 @@ io.on('connection', (socket) => {
       timerInterval: null,
       golfState: initializeGolfState()
     };
-    
+
     socket.join(code);
     socket.emit('lobby-created', { code, gameMode: lobbies[code].gameMode, players: lobbies[code].players });
     console.log(`[Lobby] Room ${code} created by host ${data.username} (Mode: ${lobbies[code].gameMode})`);
@@ -217,27 +232,27 @@ io.on('connection', (socket) => {
       timerInterval: null,
       golfState: initializeGolfState()
     };
-    
+
     socket.join(code);
     socket.emit('lobby-created', { code, gameMode: lobbies[code].gameMode, players: lobbies[code].players });
-    
+
     console.log(`[Test Game] Solo test room ${code} created and started for ${data.username} (Mode: ${lobbies[code].gameMode})`);
-    
+
     io.to(code).emit('game-started', {
       players: lobbies[code].players,
       buildings: lobbies[code].buildings,
       gameMode: lobbies[code].gameMode,
       golfState: lobbies[code].golfState
     });
-    
+
     // Start countdown timer loop immediately
     lobbies[code].timerInterval = setInterval(() => {
       const lobby = lobbies[code];
       if (!lobby) return;
-      
+
       lobby.timeLeft--;
       io.to(code).emit('game-tick', { timeLeft: lobby.timeLeft });
-      
+
       if (lobby.timeLeft <= 0) {
         endGame(code, 'timeout');
       }
@@ -248,17 +263,17 @@ io.on('connection', (socket) => {
   socket.on('join-lobby', (data) => {
     const code = data.code ? data.code.toUpperCase() : '';
     const lobby = lobbies[code];
-    
+
     if (!lobby) {
       socket.emit('error-msg', 'Lobby not found. Check the code and try again.');
       return;
     }
-    
+
     if (lobby.gameStarted) {
       socket.emit('error-msg', 'Game has already started in this room.');
       return;
     }
-    
+
     const playerIds = Object.keys(lobby.players);
     if (playerIds.length >= 2) {
       socket.emit('error-msg', 'This lobby is full (max 2 players).');
@@ -277,10 +292,10 @@ io.on('connection', (socket) => {
       accuracy: 0,
       heading: 0
     };
-    
+
     socket.join(code);
     socket.emit('lobby-joined', { code, gameMode: lobby.gameMode, players: lobby.players });
-    
+
     // Notify all players in lobby
     io.to(code).emit('player-updated', { players: lobby.players });
     console.log(`[Lobby] Player ${data.username} joined room ${code}`);
@@ -301,44 +316,44 @@ io.on('connection', (socket) => {
         break;
       }
     }
-    
+
     if (!roomCode) return;
     const lobby = lobbies[roomCode];
     if (!lobby || lobby.gameStarted) return;
-    
+
     if (Object.keys(lobby.players).length < 2) {
       socket.emit('error-msg', 'Waiting for a second player to join before starting.');
       return;
     }
-    
+
     console.log(`[Game Start] Starting game in room ${roomCode}`);
     lobby.gameStarted = true;
     lobby.timeLeft = 300; // Reset timer to 5 minutes
-    
+
     // Reset players states
     for (const pid in lobby.players) {
       lobby.players[pid].score = 0;
       lobby.players[pid].swings = 0;
       lobby.players[pid].multiplier = 1.0;
     }
-    
+
     // Reset powerup buildings and select fresh random hole
     lobby.buildings = BUILDINGS.map(b => ({ ...b, capturedBy: null }));
     lobby.golfState = initializeGolfState();
-    
+
     io.to(roomCode).emit('game-started', {
       players: lobby.players,
       buildings: lobby.buildings,
       gameMode: lobby.gameMode,
       golfState: lobby.golfState
     });
-    
+
     // Start countdown timer loop
     lobby.timerInterval = setInterval(() => {
       lobby.timeLeft--;
-      
+
       io.to(roomCode).emit('game-tick', { timeLeft: lobby.timeLeft });
-      
+
       if (lobby.timeLeft <= 0) {
         endGame(roomCode, 'timeout');
       }
@@ -354,17 +369,17 @@ io.on('connection', (socket) => {
         break;
       }
     }
-    
+
     if (!roomCode) return;
     const lobby = lobbies[roomCode];
     const player = lobby.players[socket.id];
-    
+
     // Update server state coordinates
     player.lat = data.lat;
     player.lng = data.lng;
     player.accuracy = data.accuracy;
     player.heading = data.heading;
-    
+
     // Broadcast coordinates to room opponent
     socket.to(roomCode).emit('location-broadcast', {
       playerId: socket.id,
@@ -386,17 +401,17 @@ io.on('connection', (socket) => {
         break;
       }
     }
-    
+
     if (!roomCode) return;
     const lobby = lobbies[roomCode];
     if (!lobby || !lobby.gameStarted || lobby.gameMode !== 'golf') return;
-    
+
     const player = lobby.players[socket.id];
     const gs = lobby.golfState;
-    
+
     // Increment swing count
     player.swings += 1;
-    
+
     const distance = data.distance || 0;
     const heading = data.heading || 0;
 
@@ -419,12 +434,12 @@ io.on('connection', (socket) => {
     const distanceToHoleMeters = Math.sqrt(
       Math.pow(dyToHole * metersPerLat, 2) + Math.pow(dxToHole * metersPerLng, 2)
     );
-    
-    if (distanceToHoleMeters <= 50) {
+
+    if (distanceToHoleMeters <= REACH_DISTANCE) {
       // It goes in!
       gs.ballLat = holeLat;
       gs.ballLng = holeLng;
-      
+
       io.to(roomCode).emit('golf-state-update', {
         golfState: gs,
         playerId: socket.id,
@@ -432,7 +447,15 @@ io.on('connection', (socket) => {
         distance,
         heading
       });
-      
+
+      generateCommentary('sink', { 
+        buildingName: gs.holeName, 
+        swingCount: player.swings, 
+        distanceToHole: Math.round(distanceToHoleMeters)
+      }).then(text => {
+        io.to(roomCode).emit('commentary-audio', { text });
+      });
+
       setTimeout(() => endGame(roomCode, 'golf-finished'), 2000);
     } else {
       io.to(roomCode).emit('golf-state-update', {
@@ -441,6 +464,25 @@ io.on('connection', (socket) => {
         swings: player.swings,
         distance,
         heading
+      });
+
+      let nearestDist = Infinity;
+      let nearestName = null;
+      BUILDINGS.forEach(b => {
+        const d = calculateDistanceServer(gs.ballLat, gs.ballLng, b.lat, b.lng);
+        if (d < nearestDist) {
+          nearestDist = d;
+          nearestName = b.name;
+        }
+      });
+      const bName = nearestDist <= 100 ? nearestName : null;
+
+      generateCommentary('swing', { 
+        buildingName: bName, 
+        swingCount: player.swings, 
+        distanceToHole: Math.round(distanceToHoleMeters)
+      }).then(text => {
+        io.to(roomCode).emit('commentary-audio', { text });
       });
     }
   });
