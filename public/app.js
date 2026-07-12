@@ -241,6 +241,8 @@ btnStartGame.addEventListener('click', () => {
 });
 
 btnDialogClose.addEventListener('click', () => {
+  // Tell the server to remove us from the old room
+  socket.emit('leave-lobby');
   lobbyCode = '';
   dialogOverlay.style.display = 'none';
   // Reset local building capture statuses immediately
@@ -853,12 +855,36 @@ function stopTracking() {
   }
   if (markerAnimFrame) { cancelAnimationFrame(markerAnimFrame); markerAnimFrame = null; }
   if (oppAnimFrame) { cancelAnimationFrame(oppAnimFrame); oppAnimFrame = null; }
+  if (ballGlideAnimFrame) { cancelAnimationFrame(ballGlideAnimFrame); ballGlideAnimFrame = null; }
+  if (ballSpinFrame) { cancelAnimationFrame(ballSpinFrame); ballSpinFrame = null; }
+
+  // Remove old markers from the map before nulling references
+  if (myMarker && map) { map.removeLayer(myMarker); }
+  if (myAccuracyCircle && map) { map.removeLayer(myAccuracyCircle); }
+  if (opponentMarker && map) { map.removeLayer(opponentMarker); }
+  if (golfBallMarker && map) { map.removeLayer(golfBallMarker); }
+  if (golfHoleMarker && map) { map.removeLayer(golfHoleMarker); }
+
+  // Clean up any lingering trail wedges
+  if (window._activeMainWedge && map) { map.removeLayer(window._activeMainWedge); window._activeMainWedge = null; }
+  if (window._activeShadowWedge && map) { map.removeLayer(window._activeShadowWedge); window._activeShadowWedge = null; }
+
   myMarker = null;
   myAccuracyCircle = null;
   opponentMarker = null;
+  golfBallMarker = null;
+  golfHoleMarker = null;
+
+  // Reset golf game state so a fresh game starts clean
+  currentGolfState = null;
+  prevBallPos = null;
+
+  // Remove building proximity markers
+  for (const id in buildingMarkers) {
+    if (map) map.removeLayer(buildingMarkers[id]);
+  }
   buildingMarkers = {};
-  if (golfBallMarker) { map.removeLayer(golfBallMarker); golfBallMarker = null; }
-  if (golfHoleMarker) { map.removeLayer(golfHoleMarker); golfHoleMarker = null; }
+
   smoothLat = null;
   smoothLng = null;
   lastGpsTimestamp = null;
