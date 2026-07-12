@@ -676,7 +676,7 @@ function updateBuildingPins() {
     const ballIcon = L.divIcon({
       className: 'custom-golf-ball-wrapper',
       html: `
-        <img src="/images/golf_ball.png?v=2" class="golf-ball-img" style="
+        <img src="/images/golf_ball.png?v=3" class="golf-ball-img" style="
           width: 22px;
           height: 22px;
           display: block;
