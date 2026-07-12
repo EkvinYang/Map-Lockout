@@ -196,7 +196,7 @@ app.post('/api/grade', async (req, res) => {
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-flash-latest',
+      model: 'gemini-3.5-flash',
       contents: prompt,
     });
     
@@ -209,6 +209,7 @@ app.post('/api/grade', async (req, res) => {
     }
     text = text.trim();
     
+    console.log('[grade] Gemini raw response:', text);
     const result = JSON.parse(text);
     res.json(result);
   } catch (err) {

@@ -314,7 +314,6 @@ socket.on('game-started', (data) => {
   if (gradeLoading) gradeLoading.style.display = 'none';
   if (gradeResult) {
     gradeResult.style.display = 'none';
-    gradeResult.innerHTML = '';
   }
 
   // Reset ball position tracking and map flight wedges
