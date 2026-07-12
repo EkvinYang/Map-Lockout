@@ -1,10 +1,15 @@
 // Socket connection
 const socket = io();
 
-// Configurable reach distance (meters) — overridden by server on connect
+// Configurable distance limits (meters) — overridden by server on connect
 let REACH_DISTANCE = 50;
+let INTERACT_DISTANCE = 100;
+let END_DISTANCE = 75;
+
 socket.on('server-config', (cfg) => {
-  if (cfg.reachDistance) REACH_DISTANCE = cfg.reachDistance;
+  if (cfg.reachDistance !== undefined) REACH_DISTANCE = cfg.reachDistance;
+  if (cfg.interactDistance !== undefined) INTERACT_DISTANCE = cfg.interactDistance;
+  if (cfg.endDistance !== undefined) END_DISTANCE = cfg.endDistance;
 });
 
 
@@ -41,7 +46,7 @@ let smoothLng = null; // Exponentially-smoothed longitude
 let lastGpsTimestamp = null;
 let currentGameMode = 'golf';
 let currentGolfState = null;
-let golfBallMarker = null;
+let ballMarkers = {}; // socketId -> L.marker
 let prevBallPos = null; // Keep track of last hit position to render trail
 let golfHoleMarker = null; // Used to calculate dt between updates
 let markerAnimFrame = null; // requestAnimationFrame handle for own marker
@@ -301,6 +306,24 @@ socket.on('game-started', (data) => {
   currentGameMode = 'golf';
   currentGolfState = data.golfState || null;
 
+  // Clear previous commentaries and shot banners
+  if (eventFeed) eventFeed.innerHTML = '';
+
+  // Hide end screen overlay and reset AI Grade displays
+  if (dialogOverlay) dialogOverlay.style.display = 'none';
+  if (gradeLoading) gradeLoading.style.display = 'none';
+  if (gradeResult) {
+    gradeResult.style.display = 'none';
+    gradeResult.innerHTML = '';
+  }
+
+  // Reset ball position tracking and map flight wedges
+  prevBallPos = null;
+  if (window._activeMainWedge && map) { map.removeLayer(window._activeMainWedge); }
+  if (window._activeShadowWedge && map) { map.removeLayer(window._activeShadowWedge); }
+  window._activeMainWedge = null;
+  window._activeShadowWedge = null;
+
   document.body.classList.add('golf-mode');
   const meId = socket.id;
   golfSwingsDisplay.textContent = players[meId]?.swings || 0;
@@ -312,37 +335,45 @@ socket.on('game-started', (data) => {
 });
 
 socket.on('golf-state-update', (data) => {
-  currentGolfState = data.golfState;
-  const { playerId, swings } = data;
-  if (playerId === socket.id) {
-    golfSwingsDisplay.textContent = swings;
-    swingWrapper.classList.remove('active');
-  }
-  
-  if (golfBallMarker && map) {
-    const newPos = [currentGolfState.ballLat, currentGolfState.ballLng];
-    
-    // Smoothly glide the ball and dynamically draw the growing trail
-    if (prevBallPos && (prevBallPos[0] !== newPos[0] || prevBallPos[1] !== newPos[1])) {
-      startBallGlide(prevBallPos, newPos, data.distance || 0);
+  const { playerId, swings, ballLat, ballLng, completed } = data;
+  const p = players[playerId];
+  if (p) {
+    const oldPos = [p.ballLat, p.ballLng];
+    p.ballLat = ballLat;
+    p.ballLng = ballLng;
+    p.swings = swings;
+    p.completed = completed;
+
+    const newPos = [ballLat, ballLng];
+
+    if (playerId === socket.id) {
+      golfSwingsDisplay.textContent = swings;
+      swingWrapper.classList.remove('active');
+      
+      const roundedStrength = Math.round(data.distance || 0);
+      const roundedBearing = Math.round(data.heading || 0);
+      showEventBanner(`BALL HIT! Strength: ${roundedStrength}%, Bearing: ${roundedBearing}°`, 'system');
+      
+      if (prevBallPos && (prevBallPos[0] !== newPos[0] || prevBallPos[1] !== newPos[1])) {
+        startBallGlide(oldPos, newPos, data.distance || 0);
+      } else {
+        const marker = ballMarkers[playerId];
+        if (marker) marker.setLatLng(newPos);
+      }
+      prevBallPos = newPos;
+      triggerBallSpin(data.distance || 0);
     } else {
-      golfBallMarker.setLatLng(newPos);
+      updateBuildingPins();
     }
-    prevBallPos = newPos;
-    
-    const roundedStrength = Math.round(data.distance || 0);
-    const roundedBearing = Math.round(data.heading || 0);
-    showEventBanner(`BALL HIT! Strength: ${roundedStrength}%, Bearing: ${roundedBearing}°`, 'system');
-    triggerBallSpin(data.distance || 0);
-  } else if (currentGolfState) {
-    prevBallPos = [currentGolfState.ballLat, currentGolfState.ballLng];
   }
   updateOffscreenIndicators();
 });
 
 socket.on('commentary-audio', (data) => {
   if (data.text) {
-    showEventBanner(data.text, 'system');
+    if (!data.playerId || data.playerId === socket.id) {
+      showEventBanner(data.text, 'system');
+    }
   }
 });
 
@@ -529,29 +560,81 @@ socket.on('game-over', (data) => {
     if (isSolo) {
       dialogMultiplayerScores.style.display = 'none';
     } else {
-      dialogMultiplayerScores.style.display = 'grid';
-      if (finalScoreMe) finalScoreMe.textContent = `${strokes}`;
-      if (finalScoreOpp) finalScoreOpp.textContent = `${opp ? opp.swings : 0}`;
+      dialogMultiplayerScores.style.display = 'flex';
+      const listContainer = document.getElementById('dialog-multiplayer-list');
+      if (listContainer) {
+        listContainer.innerHTML = '';
+        
+        // Sort players: completed first, then fewer swings
+        const sorted = Object.keys(finalPlayers).map(pid => ({
+          id: pid,
+          ...finalPlayers[pid]
+        })).sort((a, b) => {
+          if (a.completed && !b.completed) return -1;
+          if (!a.completed && b.completed) return 1;
+          return a.swings - b.swings;
+        });
+
+        sorted.forEach((p, index) => {
+          const row = document.createElement('div');
+          row.style.display = 'grid';
+          row.style.gridTemplateColumns = '45px 1fr 70px 75px';
+          row.style.alignItems = 'center';
+          row.style.fontSize = '0.9rem';
+
+          const rankText = index === 0 ? '1st' : '2nd';
+          const rankColor = index === 0 ? 'var(--warning)' : 'var(--text-muted)';
+          const resultText = p.completed ? 'FINISHED' : 'DNF';
+          const resultColor = p.completed ? 'var(--success)' : 'var(--danger)';
+
+          row.innerHTML = `
+            <span style="color: ${rankColor}; font-weight: bold;">${rankText}</span>
+            <span style="font-weight: bold; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${p.username}</span>
+            <span style="text-align: right; color: var(--text-main);">${p.swings}</span>
+            <span style="text-align: right; color: ${resultColor}; font-weight: bold;">${resultText}</span>
+          `;
+          listContainer.appendChild(row);
+        });
+      }
     }
   }
 
-  // Set header & victory description
+  // Set header & victory description (no emojis!)
   dialogSubTitle.textContent = `Reason: ${reason}`;
-  if (isSolo) {
-    dialogHeaderTitle.textContent = "⛳ HOLE IN!";
-    dialogHeaderTitle.className = "dialog-title dialog-winner";
-    dialogResultText.textContent = `You completed the course in ${strokes} swings!`;
+  const isDisconnect = reason && reason.toLowerCase().includes('disconnect');
+  const myCompleted = me ? me.completed : false;
+
+  if (isDisconnect) {
+    if (winnerId === socket.id) {
+      dialogHeaderTitle.textContent = "YOU WON!";
+      dialogHeaderTitle.className = "dialog-title dialog-winner";
+      dialogResultText.textContent = "Your opponent left the match.";
+    } else {
+      dialogHeaderTitle.textContent = "DEFEAT";
+      dialogHeaderTitle.className = "dialog-title dialog-loser";
+      dialogResultText.textContent = "You disconnected from the game.";
+    }
+  } else if (isSolo) {
+    if (myCompleted) {
+      dialogHeaderTitle.textContent = "COURSE COMPLETE";
+      dialogHeaderTitle.className = "dialog-title dialog-winner";
+      dialogResultText.textContent = `Congratulations! You reached the target hole in ${strokes} swings.`;
+    } else {
+      dialogHeaderTitle.textContent = "TIME EXPIRED";
+      dialogHeaderTitle.className = "dialog-title dialog-loser";
+      dialogResultText.textContent = "You failed to complete the course before the timer ran out.";
+    }
   } else {
     if (winnerId === 'tie') {
-      dialogHeaderTitle.textContent = "IT'S A DRAW!";
+      dialogHeaderTitle.textContent = "MATCH DRAW";
       dialogHeaderTitle.className = "dialog-title";
       dialogResultText.textContent = "A neck-and-neck match! You finished with the same number of swings.";
     } else if (winnerId === socket.id) {
-      dialogHeaderTitle.textContent = "🏆 VICTORY IS YOURS!";
+      dialogHeaderTitle.textContent = "VICTORY";
       dialogHeaderTitle.className = "dialog-title dialog-winner";
       dialogResultText.textContent = "Fantastic play! You completed the course in fewer swings.";
     } else {
-      dialogHeaderTitle.textContent = "🥈 OPPONENT WINS";
+      dialogHeaderTitle.textContent = "DEFEAT";
       dialogHeaderTitle.className = "dialog-title dialog-loser";
       dialogResultText.textContent = "Almost! Your opponent completed the course in fewer swings.";
     }
@@ -710,13 +793,8 @@ function getBuildingPinHtml(color, name) {
 
 function updateBuildingPins() {
   if (currentGameMode === 'golf' && currentGolfState) {
-    
     // Draw Golf Pins
-    if (golfBallMarker) { map.removeLayer(golfBallMarker); }
     if (golfHoleMarker) { map.removeLayer(golfHoleMarker); }
-    
-    prevBallPos = [currentGolfState.ballLat, currentGolfState.ballLng];
-    
     const holeIcon = L.divIcon({
       className: 'map-pin-container',
       html: getBuildingPinHtml('#10b981', currentGolfState.holeName || 'Target'),
@@ -724,23 +802,61 @@ function updateBuildingPins() {
     });
     golfHoleMarker = L.marker([currentGolfState.holeLat, currentGolfState.holeLng], { icon: holeIcon }).addTo(map);
 
-    const ballIcon = L.divIcon({
-      className: 'custom-golf-ball-wrapper',
-      html: `
-        <img src="/images/golf_ball.png?v=3" class="golf-ball-img" style="
-          width: 22px;
-          height: 22px;
-          display: block;
-          border-radius: 50%;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.5);
-          transform-origin: center;
-          transition: transform 0.05s linear;
-        ">
-      `,
-      iconSize: [22, 22],
-      iconAnchor: [11, 11]
-    });
-    golfBallMarker = L.marker([currentGolfState.ballLat, currentGolfState.ballLng], { icon: ballIcon }).addTo(map);
+    // Clear and draw individual player balls
+    for (const pid in ballMarkers) {
+      map.removeLayer(ballMarkers[pid]);
+    }
+    ballMarkers = {};
+
+    const ballCoords = [];
+    for (const pid in players) {
+      const p = players[pid];
+      if (p.ballLat === undefined || p.ballLng === undefined) continue;
+
+      let drawLat = p.ballLat;
+      let drawLng = p.ballLng;
+
+      // Nudge if overlap (under 0.00001 deg, which is ~1 meter)
+      for (const coords of ballCoords) {
+        if (Math.abs(drawLat - coords.origLat) < 0.00001 && Math.abs(drawLng - coords.origLng) < 0.00001) {
+          // Nudge by a small offset (approx 3 meters)
+          drawLat += 0.000025;
+          drawLng += 0.000025;
+        }
+      }
+      ballCoords.push({ origLat: p.ballLat, origLng: p.ballLng, lat: drawLat, lng: drawLng });
+
+      const color = p.isHost ? '#6366f1' : '#ec4899';
+      const ballIcon = L.divIcon({
+        className: 'custom-golf-ball-wrapper',
+        html: `
+          <div class="golf-ball-img" style="
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: #ffffff;
+            border: 3px solid ${color};
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transform-origin: center;
+            transition: transform 0.05s linear;
+          ">
+            <div style="width: 6px; height: 6px; border-radius: 50%; background: ${color}; transform: translateY(-4px);"></div>
+          </div>
+        `,
+        iconSize: [22, 22],
+        iconAnchor: [11, 11]
+      });
+
+      const marker = L.marker([drawLat, drawLng], { icon: ballIcon }).addTo(map);
+      ballMarkers[pid] = marker;
+
+      if (pid === socket.id) {
+        prevBallPos = [p.ballLat, p.ballLng];
+      }
+    }
     return;
   }
 
@@ -899,6 +1015,7 @@ function animateMyMarker() {
     markerAnimFrame = requestAnimationFrame(animateMyMarker);
   } else {
     markerAnimFrame = null;
+    updateOffscreenIndicators(true);
   }
 }
 
@@ -922,6 +1039,7 @@ function animateOpponentMarker() {
     oppAnimFrame = requestAnimationFrame(animateOpponentMarker);
   } else {
     oppAnimFrame = null;
+    updateOffscreenIndicators(true);
   }
 }
 
@@ -939,7 +1057,10 @@ function stopTracking() {
   if (myMarker && map) { map.removeLayer(myMarker); }
   if (myAccuracyCircle && map) { map.removeLayer(myAccuracyCircle); }
   if (opponentMarker && map) { map.removeLayer(opponentMarker); }
-  if (golfBallMarker && map) { map.removeLayer(golfBallMarker); }
+  for (const pid in ballMarkers) {
+    if (map) map.removeLayer(ballMarkers[pid]);
+  }
+  ballMarkers = {};
   if (golfHoleMarker && map) { map.removeLayer(golfHoleMarker); }
 
   // Clean up any lingering trail wedges
@@ -949,7 +1070,7 @@ function stopTracking() {
   myMarker = null;
   myAccuracyCircle = null;
   opponentMarker = null;
-  golfBallMarker = null;
+  // ballMarkers cleaned up
   golfHoleMarker = null;
 
   // Reset golf game state so a fresh game starts clean
@@ -974,7 +1095,7 @@ function checkProximities() {
       const dist = calculateDistance(myLat, myLng, b.lat, b.lng);
       let marker = buildingMarkers[b.id];
 
-      if (dist <= REACH_DISTANCE) {
+      if (dist <= INTERACT_DISTANCE) {
         if (!marker) {
           const icon = L.divIcon({
             className: 'grey-name-tag-wrapper',
@@ -1004,24 +1125,27 @@ function checkProximities() {
   }
 
   if (currentGameMode === 'golf' && currentGolfState) {
-    const distToBall = calculateDistance(myLat, myLng, currentGolfState.ballLat, currentGolfState.ballLng);
-    const distToHole = calculateDistance(currentGolfState.ballLat, currentGolfState.ballLng, currentGolfState.holeLat, currentGolfState.holeLng);
-    
-    const distToBallDisplay = document.getElementById('dist-to-ball-display');
-    const distToHoleDisplay = document.getElementById('dist-to-hole-display');
-    if (distToBallDisplay) distToBallDisplay.textContent = `${Math.round(distToBall)}m`;
-    if (distToHoleDisplay) distToHoleDisplay.textContent = `${Math.round(distToHole)}m`;
+    const me = players[socket.id];
+    if (me && me.ballLat !== undefined) {
+      const distToBall = calculateDistance(myLat, myLng, me.ballLat, me.ballLng);
+      const distToHole = calculateDistance(me.ballLat, me.ballLng, currentGolfState.holeLat, currentGolfState.holeLng);
+      
+      const distToBallDisplay = document.getElementById('dist-to-ball-display');
+      const distToHoleDisplay = document.getElementById('dist-to-hole-display');
+      if (distToBallDisplay) distToBallDisplay.textContent = `${Math.round(distToBall)}m`;
+      if (distToHoleDisplay) distToHoleDisplay.textContent = `${Math.round(distToHole)}m`;
 
-    if (distToBall <= REACH_DISTANCE) {
-      proximityContainer.style.display = 'flex';
-      proximityDot.className = 'proximity-pulse very-near';
-      proximityText.textContent = 'Ball Reached!';
-      swingWrapper.classList.add('active');
-    } else {
-      proximityContainer.style.display = 'flex';
-      proximityDot.className = 'proximity-pulse near';
-      proximityText.textContent = 'Walk to ball';
-      swingWrapper.classList.remove('active');
+      if (distToBall <= REACH_DISTANCE) {
+        proximityContainer.style.display = 'flex';
+        proximityDot.className = 'proximity-pulse very-near';
+        proximityText.textContent = 'Ball Reached!';
+        swingWrapper.classList.add('active');
+      } else {
+        proximityContainer.style.display = 'flex';
+        proximityDot.className = 'proximity-pulse near';
+        proximityText.textContent = 'Walk to ball';
+        swingWrapper.classList.remove('active');
+      }
     }
   }
 }
@@ -1132,13 +1256,21 @@ function getScreenBorderIntersection(center, target, boundsWidth, boundsHeight, 
   return { x, y, angle };
 }
 
-function updateOffscreenIndicators() {
+let lastIndicatorUpdate = 0;
+function updateOffscreenIndicators(force = false) {
   const container = document.getElementById('offscreen-indicators');
   if (!container) return;
+
+  const now = performance.now();
+  if (!force && (now - lastIndicatorUpdate < 100)) {
+    return; // Limit to 10 FPS to prevent Leaflet map freezes / layout thrashing
+  }
+  lastIndicatorUpdate = now;
 
   if (!map || currentGameMode !== 'golf' || !currentGolfState) {
     document.getElementById('indicator-self').style.display = 'none';
     document.getElementById('indicator-ball').style.display = 'none';
+    document.getElementById('indicator-opp-ball').style.display = 'none';
     document.getElementById('indicator-hole').style.display = 'none';
     return;
   }
@@ -1147,11 +1279,21 @@ function updateOffscreenIndicators() {
   const mapSize = map.getSize();
   const centerPoint = L.point(mapSize.x / 2, mapSize.y / 2);
 
+  // Dynamic color coding classes setup
+  const ballEl = document.getElementById('indicator-ball');
+  const oppBallEl = document.getElementById('indicator-opp-ball');
+  if (ballEl) {
+    ballEl.className = 'offscreen-indicator ' + (isHost ? 'host-ball' : 'opp-ball');
+  }
+  if (oppBallEl) {
+    oppBallEl.className = 'offscreen-indicator ' + (isHost ? 'opp-ball' : 'host-ball');
+  }
+
   function checkAndPosition(lat, lng, elementId, onClickAction) {
     const el = document.getElementById(elementId);
     if (!el) return;
 
-    if (lat === 0 || lng === 0) {
+    if (lat === 0 || lng === 0 || lat === undefined || lng === undefined) {
       el.style.display = 'none';
       return;
     }
@@ -1180,13 +1322,29 @@ function updateOffscreenIndicators() {
     };
   }
 
+  // Positioning targets
   checkAndPosition(myLat, myLng, 'indicator-self', () => {
     map.setView([myLat, myLng], 18);
   });
 
-  checkAndPosition(currentGolfState.ballLat, currentGolfState.ballLng, 'indicator-ball', () => {
-    map.setView([currentGolfState.ballLat, currentGolfState.ballLng], 18);
-  });
+  const me = players[socket.id];
+  if (me) {
+    checkAndPosition(me.ballLat, me.ballLng, 'indicator-ball', () => {
+      map.setView([me.ballLat, me.ballLng], 18);
+    });
+  } else {
+    document.getElementById('indicator-ball').style.display = 'none';
+  }
+
+  const oppId = Object.keys(players).find(id => id !== socket.id);
+  const opp = oppId ? players[oppId] : null;
+  if (opp) {
+    checkAndPosition(opp.ballLat, opp.ballLng, 'indicator-opp-ball', () => {
+      map.setView([opp.ballLat, opp.ballLng], 18);
+    });
+  } else {
+    document.getElementById('indicator-opp-ball').style.display = 'none';
+  }
 
   checkAndPosition(currentGolfState.holeLat, currentGolfState.holeLng, 'indicator-hole', () => {
     map.setView([currentGolfState.holeLat, currentGolfState.holeLng], 18);
@@ -1282,8 +1440,9 @@ function animateBallSpin() {
 
   ballSpinAngle = (ballSpinAngle + ballSpinVelocity) % 360;
   
-  if (golfBallMarker) {
-    const el = golfBallMarker.getElement();
+  const myBallMarker = ballMarkers[socket.id];
+  if (myBallMarker) {
+    const el = myBallMarker.getElement();
     if (el) {
       const img = el.querySelector('.golf-ball-img');
       if (img) {
@@ -1364,8 +1523,9 @@ function animateBallGlide() {
   const currentPos = L.latLng(currentLat, currentLng);
   const tipPos = L.latLng(tipLat, tipLng);
 
-  if (golfBallMarker) {
-    golfBallMarker.setLatLng(currentPos);
+  const myBallMarker = ballMarkers[socket.id];
+  if (myBallMarker) {
+    myBallMarker.setLatLng(currentPos);
   }
 
   // Dynamic opacity decay during the final 30% of flight to transition smoothly into landing
@@ -1453,6 +1613,8 @@ function animateBallGlide() {
   } else {
     // Complete! Trigger decay fade-out on the active wedges
     ballGlideAnimFrame = null;
+    updateOffscreenIndicators(true);
+    updateBuildingPins();
     const wedge = window._activeMainWedge;
     const shadow = window._activeShadowWedge;
     

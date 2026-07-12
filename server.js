@@ -1,4 +1,8 @@
-require('dotenv').config();
+try {
+  require('dotenv').config();
+} catch (e) {
+  console.warn('[Server] dotenv not loaded, using system environment variables.');
+}
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -7,6 +11,8 @@ const BUILDINGS = require('./buildings');
 const { generateCommentary } = require('./commentary');
 
 const REACH_DISTANCE = parseInt(process.env.REACH_DISTANCE) || 50;
+const INTERACT_DISTANCE = parseInt(process.env.INTERACT_DISTANCE) || 100;
+const END_DISTANCE = parseInt(process.env.END_DISTANCE) || 75;
 
 function calculateDistanceServer(lat1, lon1, lat2, lon2) {
   const R = 6371000; // Radius of Earth in meters
@@ -18,6 +24,16 @@ function calculateDistanceServer(lat1, lon1, lat2, lon2) {
     Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+}
+
+function getHeadingFromCoordsServer(lat1, lng1, lat2, lng2) {
+  const toRad = d => d * Math.PI / 180;
+  const dLon = toRad(lng2 - lng1);
+  const y = Math.sin(dLon) * Math.cos(toRad(lat2));
+  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+    Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
+  const brng = Math.atan2(y, x) * (180 / Math.PI);
+  return ((brng + 360) % 360);
 }
 const app = express();
 const server = http.createServer(app);
@@ -58,12 +74,16 @@ function initializeGolfState() {
     ? candidateHoles[Math.floor(Math.random() * candidateHoles.length)]
     : BUILDINGS[0]; // fallback
 
+  const startLat = 45.38263922186898;
+  const startLng = -75.69619565975236;
+  const dist = calculateDistanceServer(startLat, startLng, targetHole.lat, targetHole.lng);
+  const par = Math.ceil(dist / 200) + 1;
+
   return {
-    ballLat: 45.38263922186898, // Richcraft Hall starting position
-    ballLng: -75.69619565975236,
     holeLat: targetHole.lat,
     holeLng: targetHole.lng,
-    holeName: targetHole.name
+    holeName: targetHole.name,
+    par
   };
 }
 
@@ -123,7 +143,29 @@ function leaveActiveLobby(socket) {
 
 // Import GoogleGenAI for grading
 const { GoogleGenAI } = require('@google/genai');
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const aiApiKey = process.env.GEMINI_API_KEY;
+const ai = aiApiKey ? new GoogleGenAI({ apiKey: aiApiKey }) : null;
+
+function getFallbackGrade(par, strokes) {
+  let score = 'A';
+  if (strokes > par + 3) score = 'B';
+  if (strokes > par + 6) score = 'C';
+  if (strokes <= par - 1) score = 'S';
+  if (strokes <= par - 2) score = 'S+';
+  
+  const comments = {
+    'S+': "Spectacular performance! You played like a seasoned professional.",
+    'S': "Superb match! You completed the course well under par.",
+    'A': "Great job! A few more practice runs and you'll be hitting under par.",
+    'B': "Decent effort. Keep working on your swing and approach.",
+    'C': "Good practice run. Focus on your alignment and power control."
+  };
+  
+  return {
+    score,
+    commentary: comments[score] || `Well played! You reached the target hole in ${strokes} strokes against a par of ${par}.`
+  };
+}
 
 app.use(express.json());
 
@@ -140,6 +182,11 @@ app.get('/api/buildings', (req, res) => {
 // AI grading endpoint
 app.post('/api/grade', async (req, res) => {
   const { par, strokes, timeTaken, distance } = req.body;
+  
+  if (!ai) {
+    console.warn('[grade] GEMINI_API_KEY not set. Using fallback grading.');
+    return res.json(getFallbackGrade(par, strokes));
+  }
   
   const prompt = `a beginner golf player completed a course with a par of ${par} in ${strokes} strokes, in a time of ${timeTaken}, and the total distance to the hole taken into account (${distance} meters), give the player a score from C, B, A, S, and S+. Tend to award higher scores, with an average around A depending on the previous 3 factors. Also include a short, encouraging and witty 1-2 sentence feedback commentary. Return the response in EXACTLY this JSON format (no markdown code blocks, just raw JSON):
 {
@@ -166,17 +213,7 @@ app.post('/api/grade', async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('[grade] Gemini grading failed:', err);
-    // Fallback logic
-    let score = 'A';
-    if (strokes > par + 3) score = 'B';
-    if (strokes > par + 6) score = 'C';
-    if (strokes <= par - 1) score = 'S';
-    if (strokes <= par - 2) score = 'S+';
-    
-    res.json({
-      score: score,
-      commentary: `Well played! You reached the target hole in ${strokes} strokes against a par of ${par}.`
-    });
+    res.json(getFallbackGrade(par, strokes));
   }
 });
 
@@ -206,25 +243,56 @@ function endGame(code, reason) {
   } else if (playerIds.length === 2) {
     const p1 = lobby.players[playerIds[0]];
     const p2 = lobby.players[playerIds[1]];
-    if (p1.swings < p2.swings) {
+    
+    if (p1.completed && !p2.completed) {
       winnerId = playerIds[0];
-    } else if (p2.swings < p1.swings) {
+    } else if (!p1.completed && p2.completed) {
       winnerId = playerIds[1];
+    } else if (p1.completed && p2.completed) {
+      // Both completed: compare swings
+      if (p1.swings < p2.swings) {
+        winnerId = playerIds[0];
+      } else if (p2.swings < p1.swings) {
+        winnerId = playerIds[1];
+      } else {
+        winnerId = 'tie';
+      }
     } else {
-      winnerId = 'tie';
+      // Neither completed (timeout): player closer to the hole wins
+      const gs = lobby.golfState;
+      if (gs) {
+        const d1 = calculateDistanceServer(p1.ballLat, p1.ballLng, gs.holeLat, gs.holeLng);
+        const d2 = calculateDistanceServer(p2.ballLat, p2.ballLng, gs.holeLat, gs.holeLng);
+        if (d1 < d2) {
+          winnerId = playerIds[0];
+        } else if (d2 < d1) {
+          winnerId = playerIds[1];
+        } else {
+          // If distances are exactly equal, compare swings
+          if (p1.swings < p2.swings) {
+            winnerId = playerIds[0];
+          } else if (p2.swings < p1.swings) {
+            winnerId = playerIds[1];
+          } else {
+            winnerId = 'tie';
+          }
+        }
+      } else {
+        winnerId = 'tie';
+      }
     }
   }
 
   let reasonText = "Time has run out!";
-  if (reason === 'golf-finished') reasonText = "The ball reached the target hole!";
+  if (reason === 'golf-finished') reasonText = "The course has been completed!";
   if (reason === 'opponent-disconnected') reasonText = "Your opponent disconnected from the game.";
 
   // Compute course par
   const gs = lobby.golfState;
+  const par = gs ? gs.par : 3;
   const startLat = 45.38263922186898;
   const startLng = -75.69619565975236;
   const dist = gs ? calculateDistanceServer(startLat, startLng, gs.holeLat, gs.holeLng) : 0;
-  const par = Math.ceil(dist / 200) + 1;
 
   io.to(code).emit('game-over', {
     players: lobby.players,
@@ -244,7 +312,11 @@ function endGame(code, reason) {
 
 io.on('connection', (socket) => {
   console.log(`[Socket] Device connected: ${socket.id}`);
-  socket.emit('server-config', { reachDistance: REACH_DISTANCE });
+  socket.emit('server-config', {
+    reachDistance: REACH_DISTANCE,
+    interactDistance: INTERACT_DISTANCE,
+    endDistance: END_DISTANCE
+  });
 
   // --- Phase 1: Simple GPS Test ---
   socket.on('test-gps-update', (data) => {
@@ -301,7 +373,10 @@ io.on('connection', (socket) => {
           lat: 0,
           lng: 0,
           accuracy: 0,
-          heading: 0
+          heading: 0,
+          ballLat: 45.38263922186898,
+          ballLng: -75.69619565975236,
+          completed: false
         }
       },
       buildings: BUILDINGS.map(b => ({ ...b, capturedBy: null })),
@@ -368,7 +443,10 @@ io.on('connection', (socket) => {
       lat: 0,
       lng: 0,
       accuracy: 0,
-      heading: 0
+      heading: 0,
+      ballLat: 45.38263922186898,
+      ballLng: -75.69619565975236,
+      completed: false
     };
 
     socket.join(code);
@@ -413,6 +491,9 @@ io.on('connection', (socket) => {
       lobby.players[pid].score = 0;
       lobby.players[pid].swings = 0;
       lobby.players[pid].multiplier = 1.0;
+      lobby.players[pid].ballLat = 45.38263922186898;
+      lobby.players[pid].ballLng = -75.69619565975236;
+      lobby.players[pid].completed = false;
     }
 
     // Reset powerup buildings and select fresh random hole
@@ -485,43 +566,59 @@ io.on('connection', (socket) => {
     if (!lobby || !lobby.gameStarted || lobby.gameMode !== 'golf') return;
 
     const player = lobby.players[socket.id];
+    if (player.completed) return; // Ignore swings if player already completed the course
+
     const gs = lobby.golfState;
 
     // Increment swing count
     player.swings += 1;
 
     const distance = data.distance || 0;
-    const heading = data.heading || 0;
+    let heading = data.heading || 0;
+
+    // Aim Assist Plan:
+    const targetHeading = getHeadingFromCoordsServer(player.ballLat, player.ballLng, gs.holeLat, gs.holeLng);
+    let diff = heading - targetHeading;
+    while (diff < -180) diff += 360;
+    while (diff > 180) diff -= 360;
+
+    if (Math.abs(diff) <= 100) {
+      diff = diff * 0.67;
+      heading = (targetHeading + diff + 360) % 360;
+    }
 
     const metersPerLat = 111320;
-    const metersPerLng = 111320 * Math.cos(gs.ballLat * Math.PI / 180);
+    const metersPerLng = 111320 * Math.cos(player.ballLat * Math.PI / 180);
 
     // Convert heading to dx/dy (0 deg = North)
     const headingRad = heading * Math.PI / 180;
     const dyMeters = distance * Math.cos(headingRad);
     const dxMeters = distance * Math.sin(headingRad);
 
-    gs.ballLat += dyMeters / metersPerLat;
-    gs.ballLng += dxMeters / metersPerLng;
+    player.ballLat += dyMeters / metersPerLat;
+    player.ballLng += dxMeters / metersPerLng;
 
     // Check distance to hole
     const holeLat = gs.holeLat;
     const holeLng = gs.holeLng;
-    const dyToHole = holeLat - gs.ballLat;
-    const dxToHole = holeLng - gs.ballLng;
+    const dyToHole = holeLat - player.ballLat;
+    const dxToHole = holeLng - player.ballLng;
     const distanceToHoleMeters = Math.sqrt(
       Math.pow(dyToHole * metersPerLat, 2) + Math.pow(dxToHole * metersPerLng, 2)
     );
 
-    if (distanceToHoleMeters <= REACH_DISTANCE) {
+    if (distanceToHoleMeters <= END_DISTANCE) {
       // It goes in!
-      gs.ballLat = holeLat;
-      gs.ballLng = holeLng;
+      player.ballLat = holeLat;
+      player.ballLng = holeLng;
+      player.completed = true;
 
       io.to(roomCode).emit('golf-state-update', {
-        golfState: gs,
         playerId: socket.id,
         swings: player.swings,
+        ballLat: player.ballLat,
+        ballLng: player.ballLng,
+        completed: true,
         distance,
         heading
       });
@@ -534,12 +631,18 @@ io.on('connection', (socket) => {
         io.to(roomCode).emit('commentary-audio', { text });
       });
 
-      setTimeout(() => endGame(roomCode, 'golf-finished'), 2000);
+      // Check if all players finished the course
+      const allCompleted = Object.keys(lobby.players).every(pid => lobby.players[pid].completed);
+      if (allCompleted) {
+        setTimeout(() => endGame(roomCode, 'golf-finished'), 2000);
+      }
     } else {
       io.to(roomCode).emit('golf-state-update', {
-        golfState: gs,
         playerId: socket.id,
         swings: player.swings,
+        ballLat: player.ballLat,
+        ballLng: player.ballLng,
+        completed: false,
         distance,
         heading
       });
@@ -547,7 +650,7 @@ io.on('connection', (socket) => {
       let nearestDist = Infinity;
       let nearestName = null;
       BUILDINGS.forEach(b => {
-        const d = calculateDistanceServer(gs.ballLat, gs.ballLng, b.lat, b.lng);
+        const d = calculateDistanceServer(player.ballLat, player.ballLng, b.lat, b.lng);
         if (d < nearestDist) {
           nearestDist = d;
           nearestName = b.name;

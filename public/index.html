@@ -211,6 +211,10 @@
         <div class="indicator-arrow"></div>
         <div class="indicator-dot"></div>
       </div>
+      <div id="indicator-opp-ball" class="offscreen-indicator opp-ball" style="display: none;">
+        <div class="indicator-arrow"></div>
+        <div class="indicator-dot"></div>
+      </div>
       <div id="indicator-hole" class="offscreen-indicator hole" style="display: none;">
         <div class="indicator-arrow"></div>
         <div class="indicator-dot"></div>
@@ -247,16 +251,15 @@
       </div>
 
       <!-- Multiplayer Score Box -->
-      <div class="dialog-score-box" id="dialog-multiplayer-scores" style="display: none; grid-template-columns: 1fr 1fr; margin-top: 5px; margin-bottom: 5px;">
-        <div>
-          <h4 style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase;">You</h4>
-          <span id="final-score-me" class="font-space"
-            style="font-size: 1.8rem; font-weight: 700; color: #818cf8;">0</span>
+      <div id="dialog-multiplayer-scores" style="display: none; flex-direction: column; gap: 8px; margin: 10px 0; background: rgba(0, 0, 0, 0.3); border-radius: 16px; padding: 15px;">
+        <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 6px; margin-bottom: 4px; display: grid; grid-template-columns: 45px 1fr 70px 75px; font-weight: bold;">
+          <span>Pos</span>
+          <span>Player</span>
+          <span style="text-align: right;">Strokes</span>
+          <span style="text-align: right;">Result</span>
         </div>
-        <div>
-          <h4 style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase;">Opponent</h4>
-          <span id="final-score-opp" class="font-space"
-            style="font-size: 1.8rem; font-weight: 700; color: #f472b6;">0</span>
+        <div id="dialog-multiplayer-list" style="display: flex; flex-direction: column; gap: 8px;">
+          <!-- Dynamically populated ranking rows -->
         </div>
       </div>
 
