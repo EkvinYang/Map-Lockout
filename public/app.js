@@ -35,6 +35,7 @@ let lastGpsTimestamp = null;
 let currentGameMode = 'golf';
 let currentGolfState = null;
 let golfBallMarker = null;
+let prevBallPos = null; // Keep track of last hit position to render trail
 let golfHoleMarker = null; // Used to calculate dt between updates
 let markerAnimFrame = null; // requestAnimationFrame handle for own marker
 let targetLat = 0; // Lerp target latitude
@@ -43,6 +44,20 @@ let animStartLat = 0; // Lerp start latitude
 let animStartLng = 0; // Lerp start longitude
 let animStartTime = 0; // Lerp animation start time
 const MARKER_GLIDE_MS = 800; // Duration markers take to glide between positions
+
+// Golf Ball Spin Animation State
+let ballSpinAngle = 0;
+let ballSpinVelocity = 0;
+let ballSpinFrame = null;
+
+// Golf Ball Glide Animation State
+let ballGlideStartLat = 0;
+let ballGlideStartLng = 0;
+let ballGlideTargetLat = 0;
+let ballGlideTargetLng = 0;
+let ballGlideStartTime = 0;
+let ballGlideAnimFrame = null;
+let ballGlideDurationMs = 1800; // dynamic glide time based on hit distance
 
 // Opponent marker smoothing state
 let oppTargetLat = 0;
@@ -94,7 +109,7 @@ let peakAccel = 0;
 let peakYaw = 0;
 let swingStartTime = 0;
 const SWING_RECORDING_MS = 1000;
-const SWING_ACCEL_THRESHOLD = 10.0;
+const SWING_ACCEL_THRESHOLD = 20.0;
 let gravity = { x: 0, y: 0, z: 0 };
 let gravityInitialized = false;
 
@@ -290,11 +305,21 @@ socket.on('golf-state-update', (data) => {
   
   if (golfBallMarker && map) {
     const newPos = [currentGolfState.ballLat, currentGolfState.ballLng];
-    golfBallMarker.setLatLng(newPos);
+    
+    // Smoothly glide the ball and dynamically draw the growing trail
+    if (prevBallPos && (prevBallPos[0] !== newPos[0] || prevBallPos[1] !== newPos[1])) {
+      startBallGlide(prevBallPos, newPos, data.distance || 0);
+    } else {
+      golfBallMarker.setLatLng(newPos);
+    }
+    prevBallPos = newPos;
     
     const roundedStrength = Math.round(data.distance || 0);
     const roundedBearing = Math.round(data.heading || 0);
     showEventBanner(`BALL HIT! Strength: ${roundedStrength}%, Bearing: ${roundedBearing}°`, 'system');
+    triggerBallSpin(data.distance || 0);
+  } else if (currentGolfState) {
+    prevBallPos = [currentGolfState.ballLat, currentGolfState.ballLng];
   }
   updateOffscreenIndicators();
 });
@@ -367,7 +392,7 @@ window.addEventListener('devicemotion', (event) => {
       btnSwingAction.classList.remove('swing-active');
       btnSwingAction.style.pointerEvents = 'auto';
       
-      const distance = peakAccel * 1.0;
+      const distance = 20 * Math.sqrt(peakAccel) + 20;
       const adjustedYaw = (peakYaw - 90 + 360) % 360;
       
       socket.emit('golf-swing', { distance, heading: adjustedYaw });
@@ -639,6 +664,8 @@ function updateBuildingPins() {
     if (golfBallMarker) { map.removeLayer(golfBallMarker); }
     if (golfHoleMarker) { map.removeLayer(golfHoleMarker); }
     
+    prevBallPos = [currentGolfState.ballLat, currentGolfState.ballLng];
+    
     const holeIcon = L.divIcon({
       className: 'map-pin-container',
       html: getBuildingPinHtml('#10b981', `⛳ Hole: ${currentGolfState.holeName || 'Target'}`),
@@ -646,8 +673,19 @@ function updateBuildingPins() {
     });
     golfHoleMarker = L.marker([currentGolfState.holeLat, currentGolfState.holeLng], { icon: holeIcon }).addTo(map);
 
-    const ballIcon = L.icon({
-      iconUrl: '/images/golf_ball.png',
+    const ballIcon = L.divIcon({
+      className: 'custom-golf-ball-wrapper',
+      html: `
+        <img src="/images/golf_ball.png?v=2" class="golf-ball-img" style="
+          width: 22px;
+          height: 22px;
+          display: block;
+          border-radius: 50%;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+          transform-origin: center;
+          transition: transform 0.05s linear;
+        ">
+      `,
       iconSize: [22, 22],
       iconAnchor: [11, 11]
     });
@@ -1190,6 +1228,224 @@ function onDeviceOrientation(event) {
       iconAnchor: [size / 2, size / 2]
     });
     myMarker.setIcon(blueDotIcon);
+  }
+}
+
+function triggerBallSpin(strength) {
+  // Set spin speed based on swing speed (slower spin bounds)
+  ballSpinVelocity = Math.max(3, Math.min(20, strength * 0.8));
+  
+  if (!ballSpinFrame) {
+    animateBallSpin();
+  }
+}
+
+function animateBallSpin() {
+  if (ballSpinVelocity < 0.1) {
+    ballSpinVelocity = 0;
+    ballSpinFrame = null;
+    return;
+  }
+
+  ballSpinAngle = (ballSpinAngle + ballSpinVelocity) % 360;
+  
+  if (golfBallMarker) {
+    const el = golfBallMarker.getElement();
+    if (el) {
+      const img = el.querySelector('.golf-ball-img');
+      if (img) {
+        img.style.transform = `rotate(${ballSpinAngle}deg)`;
+      }
+    }
+  }
+
+  // Exponential decay
+  ballSpinVelocity *= 0.94;
+  
+  ballSpinFrame = requestAnimationFrame(animateBallSpin);
+}
+
+function startBallGlide(fromArray, toArray, distance = 0) {
+  if (ballGlideAnimFrame) {
+    cancelAnimationFrame(ballGlideAnimFrame);
+  }
+
+  // Scale flight time: base 350ms + 6ms per meter, clamped between 350ms and 1200ms
+  ballGlideDurationMs = Math.max(350, Math.min(1200, 350 + distance * 6));
+
+  ballGlideStartLat = fromArray[0];
+  ballGlideStartLng = fromArray[1];
+  ballGlideTargetLat = toArray[0];
+  ballGlideTargetLng = toArray[1];
+  ballGlideStartTime = performance.now();
+
+  // Clear any existing active trail leftovers
+  if (window._activeMainWedge && map) {
+    map.removeLayer(window._activeMainWedge);
+  }
+  if (window._activeShadowWedge && map) {
+    map.removeLayer(window._activeShadowWedge);
+  }
+  window._activeMainWedge = null;
+  window._activeShadowWedge = null;
+
+  animateBallGlide();
+}
+
+function animateBallGlide() {
+  const now = performance.now();
+  const elapsed = now - ballGlideStartTime;
+  const t = Math.min(elapsed / ballGlideDurationMs, 1);
+  const ease = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; // ease in out cubic (ball position)
+
+  // Calculate straight line vector and length
+  const dLatTotal = ballGlideTargetLat - ballGlideStartLat;
+  const dLngTotal = ballGlideTargetLng - ballGlideStartLng;
+  const totalLen = Math.sqrt(dLatTotal * dLatTotal + dLngTotal * dLngTotal);
+
+  let currentLat = ballGlideStartLat + dLatTotal * ease;
+  let currentLng = ballGlideStartLng + dLngTotal * ease;
+
+  // Tapering tail progress (starts moving after 25% progress, caps at 75% distance to leave lingering tail on landing)
+  const tipT = Math.max(0, (t - 0.25) / 0.75);
+  const tipEase = (tipT < 0.5 ? 4 * tipT * tipT * tipT : 1 - Math.pow(-2 * tipT + 2, 3) / 2) * 0.75;
+  let tipLat = ballGlideStartLat + dLatTotal * tipEase;
+  let tipLng = ballGlideStartLng + dLngTotal * tipEase;
+
+  // Add subtle parabolic 2D map curvature offset if there is motion
+  if (totalLen > 0) {
+    const perLat = -dLngTotal / totalLen;
+    const perLng = dLatTotal / totalLen;
+    const maxOffset = totalLen * 0.12; // 12% maximum curve offset in the middle of flight
+
+    // Parabolic arc multiplier: 4 * x * (1 - x)
+    const curveScale = 4 * ease * (1 - ease);
+    currentLat += perLat * maxOffset * curveScale;
+    currentLng += perLng * maxOffset * curveScale;
+
+    const tipCurveScale = 4 * tipEase * (1 - tipEase);
+    tipLat += perLat * maxOffset * tipCurveScale;
+    tipLng += perLng * maxOffset * tipCurveScale;
+  }
+
+  const currentPos = L.latLng(currentLat, currentLng);
+  const tipPos = L.latLng(tipLat, tipLng);
+
+  if (golfBallMarker) {
+    golfBallMarker.setLatLng(currentPos);
+  }
+
+  // Dynamic opacity decay during the final 30% of flight to transition smoothly into landing
+  let opacityScale = 1.0;
+  if (t > 0.7) {
+    opacityScale = 1.0 - ((t - 0.7) / 0.3) * 0.5; // fades down to 50% opacity by t=1.0
+  }
+
+  // Draw/update trail wedge dynamically along the parabolic curve
+  if (totalLen > 0 && ease !== tipEase) {
+    const leftPoints = [];
+    const rightPoints = [];
+    const steps = 6; // divide trail into 6 segments to curve smoothly
+
+    const perLat = -dLngTotal / totalLen;
+    const perLng = dLatTotal / totalLen;
+    const maxOffset = totalLen * 0.12;
+    const baseWidthDeg = 0.000045;
+
+    for (let i = 0; i <= steps; i++) {
+      const ratio = i / steps;
+      const u = tipEase + ratio * (ease - tipEase);
+
+      // Lat/Lng on the parabola at parameter u
+      let lat = ballGlideStartLat + dLatTotal * u;
+      let lng = ballGlideStartLng + dLngTotal * u;
+      const curveScale = 4 * u * (1 - u);
+      lat += perLat * maxOffset * curveScale;
+      lng += perLng * maxOffset * curveScale;
+
+      // Approximate local tangent to orient width perpendicular to local curve direction
+      const nextU = Math.min(1, u + 0.01);
+      let nextLat = ballGlideStartLat + dLatTotal * nextU;
+      let nextLng = ballGlideStartLng + dLngTotal * nextU;
+      const nextCurveScale = 4 * nextU * (1 - nextU);
+      nextLat += perLat * maxOffset * nextCurveScale;
+      nextLng += perLng * maxOffset * nextCurveScale;
+
+      const tangentLat = nextLat - lat;
+      const tangentLng = nextLng - lng;
+      const tangentLen = Math.sqrt(tangentLat * tangentLat + tangentLng * tangentLng);
+
+      let localPerLat = perLat;
+      let localPerLng = perLng;
+      if (tangentLen > 0) {
+        localPerLat = -tangentLng / tangentLen;
+        localPerLng = tangentLat / tangentLen;
+      }
+
+      // Taper width from 0 at the trailing tip (ratio=0) to baseWidthDeg at the ball (ratio=1)
+      const currentWidth = baseWidthDeg * ratio;
+
+      leftPoints.push(L.latLng(lat + localPerLat * currentWidth, lng + localPerLng * currentWidth));
+      rightPoints.push(L.latLng(lat - localPerLat * currentWidth, lng - localPerLng * currentWidth));
+    }
+
+    // Combine left boundary (tip-to-base) and right boundary (base-to-tip)
+    const polygonLatLngs = [...leftPoints, ...rightPoints.slice().reverse()];
+
+    if (!window._activeMainWedge) {
+      window._activeShadowWedge = L.polygon(polygonLatLngs, {
+        stroke: false,
+        fillColor: '#000000',
+        fillOpacity: 0.25 * opacityScale,
+        interactive: false
+      }).addTo(map);
+
+      window._activeMainWedge = L.polygon(polygonLatLngs, {
+        stroke: false,
+        fillColor: '#ffffff',
+        fillOpacity: 0.4 * opacityScale,
+        interactive: false
+      }).addTo(map);
+    } else {
+      window._activeMainWedge.setLatLngs(polygonLatLngs);
+      window._activeShadowWedge.setLatLngs(polygonLatLngs);
+      
+      window._activeMainWedge.setStyle({ fillOpacity: 0.4 * opacityScale });
+      window._activeShadowWedge.setStyle({ fillOpacity: 0.25 * opacityScale });
+    }
+  }
+
+  if (t < 1) {
+    ballGlideAnimFrame = requestAnimationFrame(animateBallGlide);
+  } else {
+    // Complete! Trigger decay fade-out on the active wedges
+    ballGlideAnimFrame = null;
+    const wedge = window._activeMainWedge;
+    const shadow = window._activeShadowWedge;
+    
+    window._activeMainWedge = null;
+    window._activeShadowWedge = null;
+
+    if (wedge && shadow) {
+      let fade = 0.5; // start at 50% opacity from the dynamic flight decay
+      const fadeInterval = setInterval(() => {
+        fade -= 0.08; // disappears completely in ~6 steps (~600ms)
+        if (fade <= 0) {
+          clearInterval(fadeInterval);
+          if (map) {
+            map.removeLayer(wedge);
+            map.removeLayer(shadow);
+          }
+        } else {
+          wedge.setStyle({
+            fillOpacity: 0.4 * fade
+          });
+          shadow.setStyle({
+            fillOpacity: 0.25 * fade
+          });
+        }
+      }, 100);
+    }
   }
 }
 

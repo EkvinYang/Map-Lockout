@@ -1214,3 +1214,9 @@ input[type="text"]:focus {
 .offscreen-indicator.hole .indicator-arrow {
   color: #10b981;
 }
+
+.custom-golf-ball-wrapper {
+  background: none !important;
+  border: none !important;
+  transition: none !important;
+}
