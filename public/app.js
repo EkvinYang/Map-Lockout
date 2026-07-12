@@ -42,6 +42,7 @@ let lastGpsTimestamp = null;
 let currentGameMode = 'golf';
 let currentGolfState = null;
 let golfBallMarker = null;
+let prevBallPos = null; // Keep track of last hit position to render trail
 let golfHoleMarker = null; // Used to calculate dt between updates
 let markerAnimFrame = null; // requestAnimationFrame handle for own marker
 let targetLat = 0; // Lerp target latitude
@@ -50,6 +51,20 @@ let animStartLat = 0; // Lerp start latitude
 let animStartLng = 0; // Lerp start longitude
 let animStartTime = 0; // Lerp animation start time
 const MARKER_GLIDE_MS = 800; // Duration markers take to glide between positions
+
+// Golf Ball Spin Animation State
+let ballSpinAngle = 0;
+let ballSpinVelocity = 0;
+let ballSpinFrame = null;
+
+// Golf Ball Glide Animation State
+let ballGlideStartLat = 0;
+let ballGlideStartLng = 0;
+let ballGlideTargetLat = 0;
+let ballGlideTargetLng = 0;
+let ballGlideStartTime = 0;
+let ballGlideAnimFrame = null;
+let ballGlideDurationMs = 1800; // dynamic glide time based on hit distance
 
 // Opponent marker smoothing state
 let oppTargetLat = 0;
@@ -101,7 +116,7 @@ let peakAccel = 0;
 let peakYaw = 0;
 let swingStartTime = 0;
 const SWING_RECORDING_MS = 1000;
-const SWING_ACCEL_THRESHOLD = 10.0;
+const SWING_ACCEL_THRESHOLD = 20.0;
 let gravity = { x: 0, y: 0, z: 0 };
 let gravityInitialized = false;
 
@@ -297,12 +312,23 @@ socket.on('golf-state-update', (data) => {
   
   if (golfBallMarker && map) {
     const newPos = [currentGolfState.ballLat, currentGolfState.ballLng];
-    golfBallMarker.setLatLng(newPos);
+    
+    // Smoothly glide the ball and dynamically draw the growing trail
+    if (prevBallPos && (prevBallPos[0] !== newPos[0] || prevBallPos[1] !== newPos[1])) {
+      startBallGlide(prevBallPos, newPos, data.distance || 0);
+    } else {
+      golfBallMarker.setLatLng(newPos);
+    }
+    prevBallPos = newPos;
     
     const roundedStrength = Math.round(data.distance || 0);
     const roundedBearing = Math.round(data.heading || 0);
     showEventBanner(`BALL HIT! Strength: ${roundedStrength}%, Bearing: ${roundedBearing}°`, 'system');
+    triggerBallSpin(data.distance || 0);
+  } else if (currentGolfState) {
+    prevBallPos = [currentGolfState.ballLat, currentGolfState.ballLng];
   }
+  updateOffscreenIndicators();
 });
 
 socket.on('commentary-audio', (data) => {
@@ -379,7 +405,7 @@ window.addEventListener('devicemotion', (event) => {
       btnSwingAction.classList.remove('swing-active');
       btnSwingAction.style.pointerEvents = 'auto';
       
-      const distance = peakAccel * 1.0;
+      const distance = 20 * Math.sqrt(peakAccel) + 20;
       const adjustedYaw = (peakYaw - 90 + 360) % 360;
       
       socket.emit('golf-swing', { distance, heading: adjustedYaw });
@@ -394,12 +420,23 @@ socket.on('game-tick', (data) => {
   const seconds = data.timeLeft % 60;
   gameTimer.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
-  if (data.timeLeft <= 15) {
-    gameTimer.style.color = '#ef4444';
-    gameTimer.style.animation = 'pulse 1s infinite';
-  } else {
-    gameTimer.style.color = '';
+  const initialTime = 900;
+  if (data.timeLeft > (2 / 3) * initialTime) {
+    gameTimer.style.color = '#10b981'; // Green (first third)
+    gameTimer.style.textShadow = '0 0 8px rgba(16, 185, 129, 0.3)';
     gameTimer.style.animation = '';
+  } else if (data.timeLeft >= (1 / 3) * initialTime) {
+    gameTimer.style.color = '#f59e0b'; // Yellow (middle third)
+    gameTimer.style.textShadow = '0 0 8px rgba(245, 158, 11, 0.3)';
+    gameTimer.style.animation = '';
+  } else {
+    gameTimer.style.color = '#ef4444'; // Red (final third)
+    gameTimer.style.textShadow = '0 0 8px rgba(239, 68, 68, 0.3)';
+    if (data.timeLeft <= 60) {
+      gameTimer.style.animation = 'pulse 1s infinite'; // Critical warning
+    } else {
+      gameTimer.style.animation = '';
+    }
   }
 });
 
@@ -544,6 +581,23 @@ function initGlobalMap() {
     maxNativeZoom: 19, // Prevents blank tiles — upscales beyond 19
     maxZoom: 21
   }).addTo(map);
+
+  // Dynamic marker zoom scaling and off-screen pointers update
+  map.on('zoomend', () => {
+    if (map && myMarker) {
+      const size = getCurrentMarkerSize();
+      const blueDotIcon = L.divIcon({
+        className: 'custom-player-pin',
+        html: getPlayerIconHtml('#6366f1', myHeading, size),
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2]
+      });
+      myMarker.setIcon(blueDotIcon);
+    }
+    updateOffscreenIndicators();
+  });
+
+  map.on('move', updateOffscreenIndicators);
 }
 
 function drawBuildingPins() {
@@ -582,6 +636,8 @@ function updateBuildingPins() {
     if (golfBallMarker) { map.removeLayer(golfBallMarker); }
     if (golfHoleMarker) { map.removeLayer(golfHoleMarker); }
     
+    prevBallPos = [currentGolfState.ballLat, currentGolfState.ballLng];
+    
     const holeIcon = L.divIcon({
       className: 'map-pin-container',
       html: getBuildingPinHtml('#10b981', `⛳ Hole: ${currentGolfState.holeName || 'Target'}`),
@@ -590,9 +646,20 @@ function updateBuildingPins() {
     golfHoleMarker = L.marker([currentGolfState.holeLat, currentGolfState.holeLng], { icon: holeIcon }).addTo(map);
 
     const ballIcon = L.divIcon({
-      className: 'map-pin-container',
-      html: getBuildingPinHtml('#ffffff', '⚪ Ball'),
-      iconSize: [30, 42], iconAnchor: [15, 42]
+      className: 'custom-golf-ball-wrapper',
+      html: `
+        <img src="/images/golf_ball.png?v=3" class="golf-ball-img" style="
+          width: 22px;
+          height: 22px;
+          display: block;
+          border-radius: 50%;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+          transform-origin: center;
+          transition: transform 0.05s linear;
+        ">
+      `,
+      iconSize: [22, 22],
+      iconAnchor: [11, 11]
     });
     golfBallMarker = L.marker([currentGolfState.ballLat, currentGolfState.ballLng], { icon: ballIcon }).addTo(map);
     return;
@@ -678,12 +745,12 @@ function startTracking() {
 
       // ---- Smooth Marker Animation (glide, don't jump) ----
       if (map) {
-        const dirString = getCompassDirection(myHeading);
+        const size = getCurrentMarkerSize();
         const blueDotIcon = L.divIcon({
           className: 'custom-player-pin',
-          html: getPlayerIconHtml('#6366f1', myHeading),
-          iconSize: [24, 24],
-          iconAnchor: [12, 12]
+          html: getPlayerIconHtml('#6366f1', myHeading, size),
+          iconSize: [size, size],
+          iconAnchor: [size / 2, size / 2]
         });
 
         if (!myMarker) {
@@ -746,6 +813,7 @@ function animateMyMarker() {
       myAccuracyCircle.setLatLng([lat, lng]);
       myAccuracyCircle.setRadius(myAccuracy);
     }
+    updateOffscreenIndicators();
   }
 
   if (t < 1) {
@@ -864,18 +932,28 @@ btnCenterGameMap.addEventListener('click', () => {
 
 // --- Compass & Direction Helper Functions ---
 
-function getPlayerIconHtml(color, heading) {
+function getCurrentMarkerSize() {
+  if (!map) return 36;
+  const currentZoom = map.getZoom();
+  const baseZoom = 18;
+  const scale = Math.max(0.5, Math.min(3.0, Math.pow(1.25, currentZoom - baseZoom)));
+  return 36 * scale;
+}
+
+function getPlayerIconHtml(color, heading, size = 36) {
   const headingDeg = isNaN(heading) ? 0 : heading;
+  const coneSize = size * 1.875; // reduced range by 25% (from 2.5 to 1.875)
+  const dotSize = size * 0.42;
   return `
-    <div style="position: relative; width: 24px; height: 24px;">
+    <div style="position: relative; width: ${size}px; height: ${size}px;">
       <!-- Blue field-of-view cone -->
       <div style="
         position: absolute;
         bottom: 50%;
         left: 50%;
-        width: 60px;
-        height: 60px;
-        background: radial-gradient(circle at 50% 100%, rgba(99, 102, 241, 0.4) 0%, rgba(99, 102, 241, 0) 80%);
+        width: ${coneSize}px;
+        height: ${coneSize}px;
+        background: radial-gradient(circle at 50% 100%, rgba(99, 102, 241, 0.9) 0%, rgba(99, 102, 241, 0.35) 60%, rgba(99, 102, 241, 0) 100%);
         clip-path: polygon(50% 100%, 20% 0%, 80% 0%);
         transform-origin: 50% 100%;
         transform: translateX(-50%) rotate(${headingDeg}deg);
@@ -887,8 +965,8 @@ function getPlayerIconHtml(color, heading) {
         position: absolute;
         top: 50%;
         left: 50%;
-        width: 24px;
-        height: 24px;
+        width: ${size}px;
+        height: ${size}px;
         border: 2px solid ${color};
         border-radius: 50%;
         transform: translate(-50%, -50%);
@@ -901,8 +979,8 @@ function getPlayerIconHtml(color, heading) {
         position: absolute;
         top: 50%;
         left: 50%;
-        width: 10px;
-        height: 10px;
+        width: ${dotSize}px;
+        height: ${dotSize}px;
         background-color: ${color};
         border: 2px solid white;
         border-radius: 50%;
@@ -912,6 +990,104 @@ function getPlayerIconHtml(color, heading) {
       "></div>
     </div>
   `;
+}
+
+function getScreenBorderIntersection(center, target, boundsWidth, boundsHeight, margin = 20) {
+  const minX = margin;
+  const maxX = boundsWidth - margin;
+  const minY = 95; 
+  const maxY = boundsHeight - 215; 
+
+  const dx = target.x - center.x;
+  const dy = target.y - center.y;
+
+  let x = center.x;
+  let y = center.y;
+
+  if (dx === 0 && dy === 0) return { x, y, angle: 0 };
+
+  const tCandidates = [];
+  if (dx > 0) {
+    tCandidates.push((maxX - center.x) / dx);
+  } else if (dx < 0) {
+    tCandidates.push((minX - center.x) / dx);
+  }
+  if (dy > 0) {
+    tCandidates.push((maxY - center.y) / dy);
+  } else if (dy < 0) {
+    tCandidates.push((minY - center.y) / dy);
+  }
+
+  const t = Math.min(...tCandidates.filter(val => val >= 0));
+  x = center.x + t * dx;
+  y = center.y + t * dy;
+
+  // Post-clamp Y coordinates to strictly prevent corner overlaps with the header & footer card
+  y = Math.max(minY, Math.min(maxY, y));
+
+  const angle = Math.atan2(dx, -dy) * 180 / Math.PI;
+  return { x, y, angle };
+}
+
+function updateOffscreenIndicators() {
+  const container = document.getElementById('offscreen-indicators');
+  if (!container) return;
+
+  if (!map || currentGameMode !== 'golf' || !currentGolfState) {
+    document.getElementById('indicator-self').style.display = 'none';
+    document.getElementById('indicator-ball').style.display = 'none';
+    document.getElementById('indicator-hole').style.display = 'none';
+    return;
+  }
+
+  const bounds = map.getBounds();
+  const mapSize = map.getSize();
+  const centerPoint = L.point(mapSize.x / 2, mapSize.y / 2);
+
+  function checkAndPosition(lat, lng, elementId, onClickAction) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
+    if (lat === 0 || lng === 0) {
+      el.style.display = 'none';
+      return;
+    }
+
+    const latlng = L.latLng(lat, lng);
+    if (bounds.contains(latlng)) {
+      el.style.display = 'none';
+      return;
+    }
+
+    const targetPoint = map.latLngToContainerPoint(latlng);
+    const { x, y, angle } = getScreenBorderIntersection(centerPoint, targetPoint, mapSize.x, mapSize.y, 25);
+
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    el.style.display = 'flex';
+
+    const arrow = el.querySelector('.indicator-arrow');
+    if (arrow) {
+      arrow.style.transform = `rotate(${angle}deg)`;
+    }
+
+    el.onclick = (e) => {
+      e.stopPropagation();
+      onClickAction();
+    };
+  }
+
+  checkAndPosition(myLat, myLng, 'indicator-self', () => {
+    map.setView([myLat, myLng], 18);
+  });
+
+  checkAndPosition(currentGolfState.ballLat, currentGolfState.ballLng, 'indicator-ball', () => {
+    map.setView([currentGolfState.ballLat, currentGolfState.ballLng], 18);
+  });
+
+  checkAndPosition(currentGolfState.holeLat, currentGolfState.holeLng, 'indicator-hole', () => {
+    map.setView([currentGolfState.holeLat, currentGolfState.holeLng], 18);
+  });
 }
 
 /**
@@ -974,13 +1150,232 @@ function onDeviceOrientation(event) {
 
   // Update own marker heading immediately on the map for responsive rotation
   if (map && myMarker) {
+    const size = getCurrentMarkerSize();
     const blueDotIcon = L.divIcon({
       className: 'custom-player-pin',
-      html: getPlayerIconHtml('#6366f1', myHeading),
-      iconSize: [24, 24],
-      iconAnchor: [12, 12]
+      html: getPlayerIconHtml('#6366f1', myHeading, size),
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2]
     });
     myMarker.setIcon(blueDotIcon);
+  }
+}
+
+function triggerBallSpin(strength) {
+  // Set spin speed based on swing speed (slower spin bounds)
+  ballSpinVelocity = Math.max(3, Math.min(20, strength * 0.8));
+  
+  if (!ballSpinFrame) {
+    animateBallSpin();
+  }
+}
+
+function animateBallSpin() {
+  if (ballSpinVelocity < 0.1) {
+    ballSpinVelocity = 0;
+    ballSpinFrame = null;
+    return;
+  }
+
+  ballSpinAngle = (ballSpinAngle + ballSpinVelocity) % 360;
+  
+  if (golfBallMarker) {
+    const el = golfBallMarker.getElement();
+    if (el) {
+      const img = el.querySelector('.golf-ball-img');
+      if (img) {
+        img.style.transform = `rotate(${ballSpinAngle}deg)`;
+      }
+    }
+  }
+
+  // Exponential decay
+  ballSpinVelocity *= 0.94;
+  
+  ballSpinFrame = requestAnimationFrame(animateBallSpin);
+}
+
+function startBallGlide(fromArray, toArray, distance = 0) {
+  if (ballGlideAnimFrame) {
+    cancelAnimationFrame(ballGlideAnimFrame);
+  }
+
+  // Scale flight time: base 350ms + 6ms per meter, clamped between 350ms and 1200ms
+  ballGlideDurationMs = Math.max(350, Math.min(1200, 350 + distance * 6));
+
+  ballGlideStartLat = fromArray[0];
+  ballGlideStartLng = fromArray[1];
+  ballGlideTargetLat = toArray[0];
+  ballGlideTargetLng = toArray[1];
+  ballGlideStartTime = performance.now();
+
+  // Clear any existing active trail leftovers
+  if (window._activeMainWedge && map) {
+    map.removeLayer(window._activeMainWedge);
+  }
+  if (window._activeShadowWedge && map) {
+    map.removeLayer(window._activeShadowWedge);
+  }
+  window._activeMainWedge = null;
+  window._activeShadowWedge = null;
+
+  animateBallGlide();
+}
+
+function animateBallGlide() {
+  const now = performance.now();
+  const elapsed = now - ballGlideStartTime;
+  const t = Math.min(elapsed / ballGlideDurationMs, 1);
+  const ease = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; // ease in out cubic (ball position)
+
+  // Calculate straight line vector and length
+  const dLatTotal = ballGlideTargetLat - ballGlideStartLat;
+  const dLngTotal = ballGlideTargetLng - ballGlideStartLng;
+  const totalLen = Math.sqrt(dLatTotal * dLatTotal + dLngTotal * dLngTotal);
+
+  let currentLat = ballGlideStartLat + dLatTotal * ease;
+  let currentLng = ballGlideStartLng + dLngTotal * ease;
+
+  // Tapering tail progress (starts moving after 25% progress, caps at 75% distance to leave lingering tail on landing)
+  const tipT = Math.max(0, (t - 0.25) / 0.75);
+  const tipEase = (tipT < 0.5 ? 4 * tipT * tipT * tipT : 1 - Math.pow(-2 * tipT + 2, 3) / 2) * 0.75;
+  let tipLat = ballGlideStartLat + dLatTotal * tipEase;
+  let tipLng = ballGlideStartLng + dLngTotal * tipEase;
+
+  // Add subtle parabolic 2D map curvature offset if there is motion
+  if (totalLen > 0) {
+    const perLat = -dLngTotal / totalLen;
+    const perLng = dLatTotal / totalLen;
+    const maxOffset = totalLen * 0.12; // 12% maximum curve offset in the middle of flight
+
+    // Parabolic arc multiplier: 4 * x * (1 - x)
+    const curveScale = 4 * ease * (1 - ease);
+    currentLat += perLat * maxOffset * curveScale;
+    currentLng += perLng * maxOffset * curveScale;
+
+    const tipCurveScale = 4 * tipEase * (1 - tipEase);
+    tipLat += perLat * maxOffset * tipCurveScale;
+    tipLng += perLng * maxOffset * tipCurveScale;
+  }
+
+  const currentPos = L.latLng(currentLat, currentLng);
+  const tipPos = L.latLng(tipLat, tipLng);
+
+  if (golfBallMarker) {
+    golfBallMarker.setLatLng(currentPos);
+  }
+
+  // Dynamic opacity decay during the final 30% of flight to transition smoothly into landing
+  let opacityScale = 1.0;
+  if (t > 0.7) {
+    opacityScale = 1.0 - ((t - 0.7) / 0.3) * 0.5; // fades down to 50% opacity by t=1.0
+  }
+
+  // Draw/update trail wedge dynamically along the parabolic curve
+  if (totalLen > 0 && ease !== tipEase) {
+    const leftPoints = [];
+    const rightPoints = [];
+    const steps = 6; // divide trail into 6 segments to curve smoothly
+
+    const perLat = -dLngTotal / totalLen;
+    const perLng = dLatTotal / totalLen;
+    const maxOffset = totalLen * 0.12;
+    const baseWidthDeg = 0.000045;
+
+    for (let i = 0; i <= steps; i++) {
+      const ratio = i / steps;
+      const u = tipEase + ratio * (ease - tipEase);
+
+      // Lat/Lng on the parabola at parameter u
+      let lat = ballGlideStartLat + dLatTotal * u;
+      let lng = ballGlideStartLng + dLngTotal * u;
+      const curveScale = 4 * u * (1 - u);
+      lat += perLat * maxOffset * curveScale;
+      lng += perLng * maxOffset * curveScale;
+
+      // Approximate local tangent to orient width perpendicular to local curve direction
+      const nextU = Math.min(1, u + 0.01);
+      let nextLat = ballGlideStartLat + dLatTotal * nextU;
+      let nextLng = ballGlideStartLng + dLngTotal * nextU;
+      const nextCurveScale = 4 * nextU * (1 - nextU);
+      nextLat += perLat * maxOffset * nextCurveScale;
+      nextLng += perLng * maxOffset * nextCurveScale;
+
+      const tangentLat = nextLat - lat;
+      const tangentLng = nextLng - lng;
+      const tangentLen = Math.sqrt(tangentLat * tangentLat + tangentLng * tangentLng);
+
+      let localPerLat = perLat;
+      let localPerLng = perLng;
+      if (tangentLen > 0) {
+        localPerLat = -tangentLng / tangentLen;
+        localPerLng = tangentLat / tangentLen;
+      }
+
+      // Taper width from 0 at the trailing tip (ratio=0) to baseWidthDeg at the ball (ratio=1)
+      const currentWidth = baseWidthDeg * ratio;
+
+      leftPoints.push(L.latLng(lat + localPerLat * currentWidth, lng + localPerLng * currentWidth));
+      rightPoints.push(L.latLng(lat - localPerLat * currentWidth, lng - localPerLng * currentWidth));
+    }
+
+    // Combine left boundary (tip-to-base) and right boundary (base-to-tip)
+    const polygonLatLngs = [...leftPoints, ...rightPoints.slice().reverse()];
+
+    if (!window._activeMainWedge) {
+      window._activeShadowWedge = L.polygon(polygonLatLngs, {
+        stroke: false,
+        fillColor: '#000000',
+        fillOpacity: 0.25 * opacityScale,
+        interactive: false
+      }).addTo(map);
+
+      window._activeMainWedge = L.polygon(polygonLatLngs, {
+        stroke: false,
+        fillColor: '#ffffff',
+        fillOpacity: 0.4 * opacityScale,
+        interactive: false
+      }).addTo(map);
+    } else {
+      window._activeMainWedge.setLatLngs(polygonLatLngs);
+      window._activeShadowWedge.setLatLngs(polygonLatLngs);
+      
+      window._activeMainWedge.setStyle({ fillOpacity: 0.4 * opacityScale });
+      window._activeShadowWedge.setStyle({ fillOpacity: 0.25 * opacityScale });
+    }
+  }
+
+  if (t < 1) {
+    ballGlideAnimFrame = requestAnimationFrame(animateBallGlide);
+  } else {
+    // Complete! Trigger decay fade-out on the active wedges
+    ballGlideAnimFrame = null;
+    const wedge = window._activeMainWedge;
+    const shadow = window._activeShadowWedge;
+    
+    window._activeMainWedge = null;
+    window._activeShadowWedge = null;
+
+    if (wedge && shadow) {
+      let fade = 0.5; // start at 50% opacity from the dynamic flight decay
+      const fadeInterval = setInterval(() => {
+        fade -= 0.08; // disappears completely in ~6 steps (~600ms)
+        if (fade <= 0) {
+          clearInterval(fadeInterval);
+          if (map) {
+            map.removeLayer(wedge);
+            map.removeLayer(shadow);
+          }
+        } else {
+          wedge.setStyle({
+            fillOpacity: 0.4 * fade
+          });
+          shadow.setStyle({
+            fillOpacity: 0.25 * fade
+          });
+        }
+      }, 100);
+    }
   }
 }
 

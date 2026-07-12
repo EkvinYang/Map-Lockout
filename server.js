@@ -197,7 +197,7 @@ io.on('connection', (socket) => {
       },
       buildings: BUILDINGS.map(b => ({ ...b, capturedBy: null })),
       gameStarted: false,
-      timeLeft: 300, // 5 minutes game duration
+      timeLeft: 900, // 15 minutes game duration
       timerInterval: null,
       golfState: initializeGolfState()
     };
@@ -228,7 +228,7 @@ io.on('connection', (socket) => {
       },
       buildings: BUILDINGS.map(b => ({ ...b, capturedBy: null })),
       gameStarted: true, // Start immediately
-      timeLeft: 300,
+      timeLeft: 900,
       timerInterval: null,
       golfState: initializeGolfState()
     };
@@ -328,8 +328,8 @@ io.on('connection', (socket) => {
 
     console.log(`[Game Start] Starting game in room ${roomCode}`);
     lobby.gameStarted = true;
-    lobby.timeLeft = 300; // Reset timer to 5 minutes
-
+    lobby.timeLeft = 900; // Reset timer to 15 minutes
+    
     // Reset players states
     for (const pid in lobby.players) {
       lobby.players[pid].score = 0;
