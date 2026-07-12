@@ -446,7 +446,7 @@ window.addEventListener('devicemotion', (event) => {
       btnSwingAction.classList.remove('swing-active');
       btnSwingAction.style.pointerEvents = 'auto';
       
-      const distance = 20 * Math.sqrt(peakAccel) + 20;
+      const distance = 25 * Math.sqrt(peakAccel) + 25;
       const adjustedYaw = (peakYaw - 90 + 360) % 360;
       
       socket.emit('golf-swing', { distance, heading: adjustedYaw });
@@ -601,7 +601,11 @@ socket.on('game-over', (data) => {
   }
 
   // Set header & victory description (no emojis!)
-  dialogSubTitle.textContent = `Reason: ${reason}`;
+  if (reason === "Course complete!" || reason === "The course has been completed!") {
+    dialogSubTitle.textContent = "Course complete!";
+  } else {
+    dialogSubTitle.textContent = `Reason: ${reason}`;
+  }
   const isDisconnect = reason && reason.toLowerCase().includes('disconnect');
   const myCompleted = me ? me.completed : false;
 

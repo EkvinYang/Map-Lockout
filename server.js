@@ -284,7 +284,7 @@ function endGame(code, reason) {
   }
 
   let reasonText = "Time has run out!";
-  if (reason === 'golf-finished') reasonText = "The course has been completed!";
+  if (reason === 'golf-finished') reasonText = "Course complete!";
   if (reason === 'opponent-disconnected') reasonText = "Your opponent disconnected from the game.";
 
   // Compute course par
@@ -635,6 +635,18 @@ io.on('connection', (socket) => {
       const allCompleted = Object.keys(lobby.players).every(pid => lobby.players[pid].completed);
       if (allCompleted) {
         setTimeout(() => endGame(roomCode, 'golf-finished'), 2000);
+      } else {
+        // In multiplayer, when one person has finished the course, ensure the timer for the other person is reduced to 5:00, if previously above
+        const playerIds = Object.keys(lobby.players);
+        if (playerIds.length > 1) {
+          const completedCount = playerIds.filter(pid => lobby.players[pid].completed).length;
+          if (completedCount === 1) {
+            if (lobby.timeLeft > 300) {
+              lobby.timeLeft = 300;
+              io.to(roomCode).emit('game-tick', { timeLeft: lobby.timeLeft });
+            }
+          }
+        }
       }
     } else {
       io.to(roomCode).emit('golf-state-update', {
