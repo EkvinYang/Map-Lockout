@@ -36,23 +36,53 @@ detect-swing.js         # phone motion sensor → swing strength/direction
 <!-- TODO: fill in remaining files, e.g. server.js, index.html, whatever handles GPS/socket state -->
 ```
 
-## Setup
+## Setup & Running the Game
 
-### AI commentary (Gemini)
-\`\`\`bash
-npm install @google/genai
-export GEMINI_API_KEY="your-key-here"   # get one free at aistudio.google.com
-\`\`\`
-`commentary.js` calls the Gemini API directly and falls back to canned lines if the call fails or the key isn't set — a missing key won't crash the game, but the commentary won't be genuinely AI-generated without it. Make sure `GEMINI_API_KEY` is set wherever the server actually runs, not just locally.
+### Prerequisites & Required Downloads
+- **Node.js**: Make sure you have [Node.js](https://nodejs.org/) installed (v16 or higher is recommended).
 
-The proximity trivia system doesn't call Gemini at all — it reads directly from `buildings.json`, so it works the same regardless of whether the API key is set.
+### Installation & Run Steps
+1. **Clone the Repository**:
+   ```bash
+   git clone https://github.com/EkvinYang/Map-Lockout.git
+   cd Map-Lockout
+   ```
+2. **Install Dependencies**:
+   ```bash
+   npm install
+   ```
+3. **Start the Server**:
+   ```bash
+   node server.js
+   ```
+   The server will start on port `3000`. You can access the interface in your browser at `http://localhost:3000`.
+
+### Mobile GPS & Motion Sensor Testing (Required)
+Since this game relies on the **Geolocation API** (GPS) and **DeviceMotion API** (accelerometer for swings), modern browsers **require a secure context (HTTPS)** to allow access on mobile devices.
+To test the game on a phone:
+1. Run a tunnel service like **ngrok** to forward port `3000`:
+   ```bash
+   ngrok http 3000
+   ```
+2. Open the generated **HTTPS** URL (e.g., `https://xxxx-xx-xx.ngrok-free.app`) on your mobile device.
+
+---
+
+### Optional: AI Commentary (Gemini)
+If you want live AI commentary, configure your Gemini API Key before starting the server:
+```bash
+# Get a key at aistudio.google.com
+export GEMINI_API_KEY="your-key-here"
+```
+If the key is not set, the game will automatically fall back to pre-defined commentary cues.
+
 
 ## Team
 
 <!-- TODO: confirm names + GitHub handles -->
 - RoboRaccoon
 - EkvinYang
-- DaGalaxyCosmo
+- vot314
 - vutum-labs
 
 ## Built for
