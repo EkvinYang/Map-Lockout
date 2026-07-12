@@ -223,10 +223,31 @@
     <div class="dialog-card">
       <div class="logo-container">
         <h2 id="dialog-header-title" class="dialog-title dialog-winner">GOLF MATCH COMPLETE</h2>
-        <p id="dialog-sub-title">Final Swing Results</p>
+        <p id="dialog-sub-title" style="color: var(--text-muted); font-size: 0.9rem;">Final Swing Results</p>
       </div>
 
-      <div class="dialog-score-box">
+      <!-- Stats Grid (Par, Strokes, Vs Par, Time) -->
+      <div class="dialog-stats-grid">
+        <div class="stat-card">
+          <span class="stat-label">Par</span>
+          <span id="final-par" class="stat-value font-space">3</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Strokes</span>
+          <span id="final-strokes" class="stat-value font-space">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Vs Par</span>
+          <span id="final-vs-par" class="stat-value font-space">E</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Time</span>
+          <span id="final-time" class="stat-value font-space">0:00</span>
+        </div>
+      </div>
+
+      <!-- Multiplayer Score Box -->
+      <div class="dialog-score-box" id="dialog-multiplayer-scores" style="display: none; grid-template-columns: 1fr 1fr; margin-top: 5px; margin-bottom: 5px;">
         <div>
           <h4 style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase;">You</h4>
           <span id="final-score-me" class="font-space"
@@ -236,6 +257,22 @@
           <h4 style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase;">Opponent</h4>
           <span id="final-score-opp" class="font-space"
             style="font-size: 1.8rem; font-weight: 700; color: #f472b6;">0</span>
+        </div>
+      </div>
+
+      <!-- AI Grade Section -->
+      <div id="ai-grade-container" class="ai-grade-container">
+        <div id="grade-loading" class="grade-loading">
+          <div class="grade-spinner"></div>
+          <span>Consulting Gemini Golf Pro...</span>
+        </div>
+        <div id="grade-result" class="grade-result" style="display: none;">
+          <div class="grade-badge-wrapper">
+            <span id="grade-score" class="grade-score-val font-space">A</span>
+          </div>
+          <div class="grade-commentary-wrapper">
+            <p id="grade-commentary" class="grade-commentary-text">Evaluating performance...</p>
+          </div>
         </div>
       </div>
 

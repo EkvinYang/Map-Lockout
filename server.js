@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -120,6 +121,65 @@ function leaveActiveLobby(socket) {
   }
 }
 
+// Import GoogleGenAI for grading
+const { GoogleGenAI } = require('@google/genai');
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+app.use(express.json());
+
+// API check
+app.get('/api/status', (req, res) => {
+  res.json({ status: 'ok', activeLobbies: Object.keys(lobbies).length });
+});
+
+// GET buildings configuration
+app.get('/api/buildings', (req, res) => {
+  res.json(BUILDINGS);
+});
+
+// AI grading endpoint
+app.post('/api/grade', async (req, res) => {
+  const { par, strokes, timeTaken, distance } = req.body;
+  
+  const prompt = `a beginner golf player completed a course with a par of ${par} in ${strokes} strokes, in a time of ${timeTaken}, and the total distance to the hole taken into account (${distance} meters), give the player a score from C, B, A, S, and S+. Tend to award higher scores, with an average around A depending on the previous 3 factors. Also include a short, encouraging and witty 1-2 sentence feedback commentary. Return the response in EXACTLY this JSON format (no markdown code blocks, just raw JSON):
+{
+  "score": "A",
+  "commentary": "Great job! A few more practice runs and you'll be hitting under par."
+}`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-flash-latest',
+      contents: prompt,
+    });
+    
+    let text = response.text?.trim() || "";
+    if (text.startsWith("```json")) {
+      text = text.substring(7);
+    }
+    if (text.endsWith("```")) {
+      text = text.substring(0, text.length - 3);
+    }
+    text = text.trim();
+    
+    const result = JSON.parse(text);
+    res.json(result);
+  } catch (err) {
+    console.error('[grade] Gemini grading failed:', err);
+    // Fallback logic
+    let score = 'A';
+    if (strokes > par + 3) score = 'B';
+    if (strokes > par + 6) score = 'C';
+    if (strokes <= par - 1) score = 'S';
+    if (strokes <= par - 2) score = 'S+';
+    
+    res.json({
+      score: score,
+      commentary: `Well played! You reached the target hole in ${strokes} strokes against a par of ${par}.`
+    });
+  }
+});
+
 // End the game and compute results
 function endGame(code, reason) {
   const lobby = lobbies[code];
@@ -132,6 +192,10 @@ function endGame(code, reason) {
   }
 
   lobby.gameStarted = false;
+
+  // Compute time taken
+  const initialTime = 900;
+  const timeElapsed = initialTime - lobby.timeLeft;
 
   // Determine winner (lowest swing count wins in golf)
   const playerIds = Object.keys(lobby.players);
@@ -155,10 +219,24 @@ function endGame(code, reason) {
   if (reason === 'golf-finished') reasonText = "The ball reached the target hole!";
   if (reason === 'opponent-disconnected') reasonText = "Your opponent disconnected from the game.";
 
+  // Compute course par
+  const gs = lobby.golfState;
+  const startLat = 45.38263922186898;
+  const startLng = -75.69619565975236;
+  const dist = gs ? calculateDistanceServer(startLat, startLng, gs.holeLat, gs.holeLng) : 0;
+  const par = Math.ceil(dist / 200) + 1;
+
   io.to(code).emit('game-over', {
     players: lobby.players,
     winnerId,
-    reason: reasonText
+    reason: reasonText,
+    stats: {
+      par,
+      timeElapsed,
+      holeDistance: Math.round(dist),
+      holeName: gs ? gs.holeName : 'Unknown',
+      completed: reason === 'golf-finished'
+    }
   });
 
   console.log(`[Game Over] Room ${code} ended: ${reasonText}. Winner: ${winnerId}`);
@@ -329,7 +407,7 @@ io.on('connection', (socket) => {
     console.log(`[Game Start] Starting game in room ${roomCode}`);
     lobby.gameStarted = true;
     lobby.timeLeft = 900; // Reset timer to 15 minutes
-    
+
     // Reset players states
     for (const pid in lobby.players) {
       lobby.players[pid].score = 0;
@@ -448,9 +526,9 @@ io.on('connection', (socket) => {
         heading
       });
 
-      generateCommentary('sink', { 
-        buildingName: gs.holeName, 
-        swingCount: player.swings, 
+      generateCommentary('sink', {
+        buildingName: gs.holeName,
+        swingCount: player.swings,
         distanceToHole: Math.round(distanceToHoleMeters)
       }).then(text => {
         io.to(roomCode).emit('commentary-audio', { text });
@@ -477,9 +555,9 @@ io.on('connection', (socket) => {
       });
       const bName = nearestDist <= 100 ? nearestName : null;
 
-      generateCommentary('swing', { 
-        buildingName: bName, 
-        swingCount: player.swings, 
+      generateCommentary('swing', {
+        buildingName: bName,
+        swingCount: player.swings,
         distanceToHole: Math.round(distanceToHoleMeters)
       }).then(text => {
         io.to(roomCode).emit('commentary-audio', { text });
