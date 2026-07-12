@@ -100,7 +100,7 @@ const proximityText = document.getElementById('proximity-text');
 const btnCenterGameMap = document.getElementById('btn-center-game-map');
 const eventFeed = document.getElementById('event-feed');
 const gpsTimestampDisplay = document.getElementById('gps-timestamp-display');
-let attemptedCaptures = new Set();
+// Conquest indicators removed
 const scoreMeMini = document.getElementById('score-me-mini');
 const scoreOppMini = document.getElementById('score-opp-mini');
 const hudScoreDividerMini = document.getElementById('hud-score-divider-mini');
@@ -248,8 +248,6 @@ btnDialogClose.addEventListener('click', () => {
     buildings.forEach(b => b.capturedBy = null);
     updateBuildingPins();
   }
-  // Clear capture attempts
-  attemptedCaptures.clear();
   // Fully clean up active game state and trackers
   stopTracking();
   // Restart fresh passive tracking for the lobby map
@@ -296,8 +294,6 @@ socket.on('game-started', (data) => {
 
   showScreen('game');
   updateBuildingPins();
-  // Reset capture attempts
-  attemptedCaptures.clear();
   // Ensure location tracking is active
   startTracking();
 });
