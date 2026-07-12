@@ -1125,209 +1125,30 @@ input[type="text"]:focus {
   transition: transform 0.1s ease-out;
 }
 
-/* Off-screen target pointers */
-.offscreen-indicators-container {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100vw !important;
-  height: 100vh !important;
-  z-index: 10010 !important; /* render on top of proximity alerts */
-  pointer-events: none;
+/* Grey Name Tag for Buildings */
+.grey-name-tag-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
-.offscreen-indicator {
-  position: absolute;
+.grey-name-tag {
+  background: rgba(80, 80, 80, 0.85);
+  backdrop-filter: blur(4px);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  white-space: nowrap;
   pointer-events: auto;
   cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: 50%;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  transform: translate(-50%, -50%);
-  transition: top 0.1s ease-out, left 0.1s ease-out;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
 }
 
-.offscreen-indicator.self {
-  border-color: rgba(99, 102, 241, 0.6);
-}
-
-.offscreen-indicator.ball {
-  border-color: rgba(255, 255, 255, 0.6);
-}
-
-.offscreen-indicator.hole {
-  border-color: rgba(16, 185, 129, 0.6);
-}
-
-.indicator-dot {
-  width: 27px;
-  height: 27px;
-  border-radius: 50%;
-  z-index: 2;
-}
-
-.offscreen-indicator.self .indicator-dot {
-  background-color: #818cf8;
-  box-shadow: 0 0 6px rgba(129, 140, 248, 0.6);
-}
-
-.offscreen-indicator.ball .indicator-dot {
-  background-color: #ffffff;
-  box-shadow: 0 0 6px rgba(255, 255, 255, 0.6);
-}
-
-.offscreen-indicator.hole .indicator-dot {
-  background-color: #10b981;
-  box-shadow: 0 0 6px rgba(16, 185, 205, 0.6);
-}
-
-.indicator-arrow {
-  position: absolute;
-  width: 0;
-  height: 0;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-bottom: 8px solid currentColor;
-  top: -9px;
-  left: calc(50% - 6px);
-  transform-origin: 6px 30px; /* rotate around circle center (21px radius + 9px offset = 30px) */
-  z-index: 1;
-}
-
-.offscreen-indicator.self .indicator-arrow {
-  color: #818cf8;
-}
-
-.offscreen-indicator.ball .indicator-arrow {
-  color: #ffffff;
-}
-
-.offscreen-indicator.hole .indicator-arrow {
-  color: #10b981;
-}
-
-.custom-golf-ball-wrapper {
-  background: none !important;
-  border: none !important;
-  transition: none !important;
-}
-
-/* ==========================================================================
-   Lobby Main Menu Custom Redesign (Aesthetic Match with Gameplay UI)
-   ========================================================================== */
-
-#lobby-screen,
-#lobby-screen * {
-  font-family: 'Share Tech Mono', 'Courier New', Courier, monospace !important;
-}
-
-#lobby-screen .glass-panel {
-  border-radius: 12px !important; /* slightly rounded rectangular */
-  margin-top: -70px; /* raise the menu screen up slightly */
-  background: var(--glass-bg) !important;
-  border: 1px solid var(--glass-border) !important;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
-}
-
-#lobby-screen h1 {
-  font-size: 2.2rem;
-  font-weight: 800;
-  letter-spacing: 2px;
-  background: linear-gradient(135deg, #ffffff 0%, #818cf8 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  margin-bottom: 5px;
-}
-
-#lobby-screen .logo-container p {
-  color: var(--text-muted);
-  font-size: 0.9rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-#lobby-screen .input-label {
-  font-size: 0.85rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: #818cf8;
-  margin-bottom: 8px;
-  display: block;
-}
-
-#lobby-screen input[type="text"] {
-  background: rgba(0, 0, 0, 0.4) !important;
-  border: 1px solid var(--glass-border) !important;
-  border-radius: 6px !important;
-  color: #ffffff !important;
-  font-size: 1.1rem !important;
-  padding: 12px !important;
-  width: 100% !important;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5) !important;
-}
-
-#lobby-screen input[type="text"]:focus {
-  border-color: #6366f1 !important;
-  outline: none !important;
-  box-shadow: 0 0 10px rgba(99, 102, 241, 0.25), inset 0 2px 4px rgba(0, 0, 0, 0.5) !important;
-}
-
-#lobby-screen .btn {
-  border-radius: 8px !important;
-  padding: 14px 20px !important;
-  font-size: 1rem !important;
-  font-weight: normal !important;
-  letter-spacing: 1px !important;
-  text-transform: uppercase !important;
-  transition: all 0.2s ease !important;
-}
-
-#lobby-screen #btn-create-lobby {
-  background: rgba(99, 102, 241, 0.2) !important;
-  border: 1px solid #6366f1 !important;
-  color: #818cf8 !important;
-  box-shadow: 0 0 15px rgba(99, 102, 241, 0.15) !important;
-}
-
-#lobby-screen #btn-create-lobby:hover {
-  background: rgba(99, 102, 241, 0.3) !important;
-  box-shadow: 0 0 20px rgba(99, 102, 241, 0.3) !important;
-}
-
-#lobby-screen #btn-join-lobby {
-  background: rgba(255, 255, 255, 0.05) !important;
-  border: 1px solid var(--glass-border) !important;
-  color: #ffffff !important;
-}
-
-#lobby-screen #btn-join-lobby:hover {
-  background: rgba(255, 255, 255, 0.1) !important;
-}
-
-#lobby-screen #btn-test-solo {
-  background: rgba(245, 158, 11, 0.15) !important;
-  border: 1px solid #f59e0b !important;
-  color: #fbbf24 !important;
-  box-shadow: 0 0 15px rgba(245, 158, 11, 0.1) !important;
-}
-
-#lobby-screen #btn-test-solo:hover {
-  background: rgba(245, 158, 11, 0.25) !important;
-  box-shadow: 0 0 20px rgba(245, 158, 11, 0.25) !important;
-}
-
-#lobby-screen .or-divider {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 1px;
+.grey-name-tag:hover {
+  background: rgba(100, 100, 100, 0.95);
+  transform: translateY(-2px);
+  transition: all 0.2s ease;
 }

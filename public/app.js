@@ -1,6 +1,13 @@
 // Socket connection
 const socket = io();
 
+// Configurable reach distance (meters) — overridden by server on connect
+let REACH_DISTANCE = 50;
+socket.on('server-config', (cfg) => {
+  if (cfg.reachDistance) REACH_DISTANCE = cfg.reachDistance;
+});
+
+
 // Application State
 let myUsername = '';
 let lobbyCode = '';
@@ -324,6 +331,12 @@ socket.on('golf-state-update', (data) => {
   updateOffscreenIndicators();
 });
 
+socket.on('commentary-audio', (data) => {
+  if (data.text) {
+    showEventBanner(data.text, 'system');
+  }
+});
+
 btnSwingAction.addEventListener('click', () => {
   if (currentGameMode === 'golf') {
     if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
@@ -588,47 +601,14 @@ function initGlobalMap() {
 }
 
 function drawBuildingPins() {
-  // Clear any existing pins and pulse markers
+  // In Campus Golf mode, standard pins are hidden by default and managed by proximity.
+  // We'll clear the markers map here.
   for (const id in buildingMarkers) {
     map.removeLayer(buildingMarkers[id]);
   }
-  if (window._buildingPulseMarkers) {
-    window._buildingPulseMarkers.forEach(m => map.removeLayer(m));
-  }
   buildingMarkers = {};
-  window._buildingPulseMarkers = [];
-
-  buildings.forEach(b => {
-    const pinIcon = L.divIcon({
-      className: 'map-pin-container',
-      html: getBuildingPinHtml('#9ca3af', b.name), // Grey pin (uncaptured)
-      iconSize: [30, 42],
-      iconAnchor: [15, 42], // Bottom center of the pin
-      popupAnchor: [0, -44]
-    });
-
-    const marker = L.marker([b.lat, b.lng], { icon: pinIcon }).addTo(map);
-
-    // Click tooltip with powerup info
-    marker.bindPopup(`<b>${b.name}</b><br><small>${b.powerup.description}</small>`, {
-      className: 'building-popup',
-      closeButton: false,
-      offset: [0, -30]
-    });
-
-    // Subtle pulse ring beneath pin
-    const pulseDiv = L.divIcon({
-      className: 'pulse-container',
-      html: `<div class="pulse-ring" style="border-color: #9ca3af"></div>`,
-      iconSize: [24, 24],
-      iconAnchor: [12, 12]
-    });
-    const pulseMarker = L.marker([b.lat, b.lng], { icon: pulseDiv }).addTo(map);
-    window._buildingPulseMarkers.push(pulseMarker);
-
-    buildingMarkers[b.id] = marker;
-  });
 }
+
 
 /**
  * Generates the HTML for a Google Maps-style location pin with a bold name label.
@@ -651,14 +631,6 @@ function getBuildingPinHtml(color, name) {
 
 function updateBuildingPins() {
   if (currentGameMode === 'golf' && currentGolfState) {
-    // Hide standard buildings
-    buildings.forEach(b => {
-      const marker = buildingMarkers[b.id];
-      if (marker) marker.setOpacity(0);
-      if (window._buildingPulseMarkers) {
-        window._buildingPulseMarkers.forEach(m => map.removeLayer(m));
-      }
-    });
     
     // Draw Golf Pins
     if (golfBallMarker) { map.removeLayer(golfBallMarker); }
@@ -693,34 +665,7 @@ function updateBuildingPins() {
     return;
   }
 
-  buildings.forEach(b => {
-    const marker = buildingMarkers[b.id];
-    if (!marker) return;
-
-    let color, name;
-    const isSolo = Object.keys(players).length <= 1;
-    if (b.capturedBy) {
-      if (isSolo || b.capturedBy === socket.id) {
-        color = '#ef4444'; // Red — captured by me (or solo)
-        name = `✅ ${b.name}`;
-      } else {
-        color = '#3b82f6'; // Blue — captured by opponent
-        name = `🔒 ${b.name}`;
-      }
-    } else {
-      color = '#9ca3af'; // Grey — uncaptured
-      name = b.name;
-    }
-
-    const pinIcon = L.divIcon({
-      className: 'map-pin-container',
-      html: getBuildingPinHtml(color, name),
-      iconSize: [30, 42],
-      iconAnchor: [15, 42],
-      popupAnchor: [0, -44]
-    });
-    marker.setIcon(pinIcon);
-  });
+  // Legacy conquest building logic removed
 }
 
 // --- Live Location Loop ---
@@ -921,7 +866,39 @@ function stopTracking() {
 
 // Check proximity to buildings
 function checkProximities() {
-  const proximityLabel = document.getElementById('proximity-label');
+  if (buildings.length > 0) {
+    buildings.forEach(b => {
+      const dist = calculateDistance(myLat, myLng, b.lat, b.lng);
+      let marker = buildingMarkers[b.id];
+
+      if (dist <= REACH_DISTANCE) {
+        if (!marker) {
+          const icon = L.divIcon({
+            className: 'grey-name-tag-wrapper',
+            html: `<div class="grey-name-tag">${b.name}</div>`,
+            iconSize: [120, 30],
+            iconAnchor: [60, 15]
+          });
+          marker = L.marker([b.lat, b.lng], { icon }).addTo(map);
+          
+          marker.bindPopup(`<b>${b.name}</b><br><small>${b.description || ''}</small>`, {
+            className: 'building-popup',
+            closeButton: false,
+            offset: [0, -15]
+          });
+
+
+
+          buildingMarkers[b.id] = marker;
+        }
+      } else {
+        if (marker) {
+          map.removeLayer(marker);
+          delete buildingMarkers[b.id];
+        }
+      }
+    });
+  }
 
   if (currentGameMode === 'golf' && currentGolfState) {
     const distToBall = calculateDistance(myLat, myLng, currentGolfState.ballLat, currentGolfState.ballLng);
@@ -932,7 +909,7 @@ function checkProximities() {
     if (distToBallDisplay) distToBallDisplay.textContent = `${Math.round(distToBall)}m`;
     if (distToHoleDisplay) distToHoleDisplay.textContent = `${Math.round(distToHole)}m`;
 
-    if (distToBall <= 50) {
+    if (distToBall <= REACH_DISTANCE) {
       proximityContainer.style.display = 'flex';
       proximityDot.className = 'proximity-pulse very-near';
       proximityText.textContent = 'Ball Reached!';
@@ -943,53 +920,6 @@ function checkProximities() {
       proximityText.textContent = 'Walk to ball';
       swingWrapper.classList.remove('active');
     }
-    return;
-  }
-
-  swingWrapper.classList.remove('active');
-  if (proximityLabel) proximityLabel.textContent = 'Nearest Building';
-  if (buildings.length === 0) return;
-
-  let closestDist = Infinity;
-  let closestBuilding = null;
-
-  buildings.forEach(b => {
-    if (b.capturedBy) return; // Skip already captured buildings
-    const dist = calculateDistance(myLat, myLng, b.lat, b.lng);
-    if (dist < closestDist) {
-      closestDist = dist;
-      closestBuilding = b;
-    }
-  });
-
-  nearestBuilding = closestBuilding;
-
-  if (nearestBuilding) {
-    nearestBuildingName.textContent = `${nearestBuilding.name} (${Math.round(closestDist)}m)`;
-
-    // Proximity logic
-    if (closestDist <= CAPTURE_RADIUS_METERS) {
-      proximityContainer.style.display = 'flex';
-      proximityDot.className = 'proximity-pulse very-near';
-      proximityText.textContent = 'Reached!';
-      
-      // Auto-trigger capture immediately
-      if (!attemptedCaptures.has(nearestBuilding.id)) {
-        attemptedCaptures.add(nearestBuilding.id);
-        socket.emit('capture-powerup', { buildingId: nearestBuilding.id });
-      }
-    } else {
-      if (closestDist <= 50) {
-        proximityContainer.style.display = 'flex';
-        proximityDot.className = 'proximity-pulse near';
-        proximityText.textContent = 'Approaching';
-      } else {
-        proximityContainer.style.display = 'none';
-      }
-    }
-  } else {
-    nearestBuildingName.textContent = 'None Nearby';
-    proximityContainer.style.display = 'none';
   }
 }
 
