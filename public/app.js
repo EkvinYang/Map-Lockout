@@ -296,6 +296,7 @@ socket.on('golf-state-update', (data) => {
     const roundedBearing = Math.round(data.heading || 0);
     showEventBanner(`BALL HIT! Strength: ${roundedStrength}%, Bearing: ${roundedBearing}°`, 'system');
   }
+  updateOffscreenIndicators();
 });
 
 btnSwingAction.addEventListener('click', () => {
@@ -381,12 +382,20 @@ socket.on('game-tick', (data) => {
   const seconds = data.timeLeft % 60;
   gameTimer.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
-  if (data.timeLeft <= 15) {
-    gameTimer.style.color = '#ef4444';
-    gameTimer.style.animation = 'pulse 1s infinite';
-  } else {
-    gameTimer.style.color = '';
+  const initialTime = 900;
+  if (data.timeLeft > (2 / 3) * initialTime) {
+    gameTimer.style.color = '#10b981'; // Green (first third)
     gameTimer.style.animation = '';
+  } else if (data.timeLeft >= (1 / 3) * initialTime) {
+    gameTimer.style.color = '#f59e0b'; // Yellow (middle third)
+    gameTimer.style.animation = '';
+  } else {
+    gameTimer.style.color = '#ef4444'; // Red (final third)
+    if (data.timeLeft <= 60) {
+      gameTimer.style.animation = 'pulse 1s infinite'; // Critical warning
+    } else {
+      gameTimer.style.animation = '';
+    }
   }
 });
 
@@ -531,6 +540,23 @@ function initGlobalMap() {
     maxNativeZoom: 19, // Prevents blank tiles — upscales beyond 19
     maxZoom: 21
   }).addTo(map);
+
+  // Dynamic marker zoom scaling and off-screen pointers update
+  map.on('zoomend', () => {
+    if (map && myMarker) {
+      const size = getCurrentMarkerSize();
+      const blueDotIcon = L.divIcon({
+        className: 'custom-player-pin',
+        html: getPlayerIconHtml('#6366f1', myHeading, size),
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2]
+      });
+      myMarker.setIcon(blueDotIcon);
+    }
+    updateOffscreenIndicators();
+  });
+
+  map.on('move', updateOffscreenIndicators);
 }
 
 function drawBuildingPins() {
@@ -733,12 +759,12 @@ function startTracking() {
 
       // ---- Smooth Marker Animation (glide, don't jump) ----
       if (map) {
-        const dirString = getCompassDirection(myHeading);
+        const size = getCurrentMarkerSize();
         const blueDotIcon = L.divIcon({
           className: 'custom-player-pin',
-          html: getPlayerIconHtml('#6366f1', myHeading),
-          iconSize: [24, 24],
-          iconAnchor: [12, 12]
+          html: getPlayerIconHtml('#6366f1', myHeading, size),
+          iconSize: [size, size],
+          iconAnchor: [size / 2, size / 2]
         });
 
         if (!myMarker) {
@@ -801,6 +827,7 @@ function animateMyMarker() {
       myAccuracyCircle.setLatLng([lat, lng]);
       myAccuracyCircle.setRadius(myAccuracy);
     }
+    updateOffscreenIndicators();
   }
 
   if (t < 1) {
@@ -934,18 +961,28 @@ btnCenterGameMap.addEventListener('click', () => {
 
 // --- Compass & Direction Helper Functions ---
 
-function getPlayerIconHtml(color, heading) {
+function getCurrentMarkerSize() {
+  if (!map) return 36;
+  const currentZoom = map.getZoom();
+  const baseZoom = 18;
+  const scale = Math.max(0.5, Math.min(3.0, Math.pow(1.25, currentZoom - baseZoom)));
+  return 36 * scale;
+}
+
+function getPlayerIconHtml(color, heading, size = 36) {
   const headingDeg = isNaN(heading) ? 0 : heading;
+  const coneSize = size * 1.875; // reduced range by 25% (from 2.5 to 1.875)
+  const dotSize = size * 0.42;
   return `
-    <div style="position: relative; width: 24px; height: 24px;">
+    <div style="position: relative; width: ${size}px; height: ${size}px;">
       <!-- Blue field-of-view cone -->
       <div style="
         position: absolute;
         bottom: 50%;
         left: 50%;
-        width: 60px;
-        height: 60px;
-        background: radial-gradient(circle at 50% 100%, rgba(99, 102, 241, 0.4) 0%, rgba(99, 102, 241, 0) 80%);
+        width: ${coneSize}px;
+        height: ${coneSize}px;
+        background: radial-gradient(circle at 50% 100%, rgba(99, 102, 241, 0.9) 0%, rgba(99, 102, 241, 0.35) 60%, rgba(99, 102, 241, 0) 100%);
         clip-path: polygon(50% 100%, 20% 0%, 80% 0%);
         transform-origin: 50% 100%;
         transform: translateX(-50%) rotate(${headingDeg}deg);
@@ -957,8 +994,8 @@ function getPlayerIconHtml(color, heading) {
         position: absolute;
         top: 50%;
         left: 50%;
-        width: 24px;
-        height: 24px;
+        width: ${size}px;
+        height: ${size}px;
         border: 2px solid ${color};
         border-radius: 50%;
         transform: translate(-50%, -50%);
@@ -971,8 +1008,8 @@ function getPlayerIconHtml(color, heading) {
         position: absolute;
         top: 50%;
         left: 50%;
-        width: 10px;
-        height: 10px;
+        width: ${dotSize}px;
+        height: ${dotSize}px;
         background-color: ${color};
         border: 2px solid white;
         border-radius: 50%;
@@ -982,6 +1019,104 @@ function getPlayerIconHtml(color, heading) {
       "></div>
     </div>
   `;
+}
+
+function getScreenBorderIntersection(center, target, boundsWidth, boundsHeight, margin = 20) {
+  const minX = margin;
+  const maxX = boundsWidth - margin;
+  const minY = 95; 
+  const maxY = boundsHeight - 215; 
+
+  const dx = target.x - center.x;
+  const dy = target.y - center.y;
+
+  let x = center.x;
+  let y = center.y;
+
+  if (dx === 0 && dy === 0) return { x, y, angle: 0 };
+
+  const tCandidates = [];
+  if (dx > 0) {
+    tCandidates.push((maxX - center.x) / dx);
+  } else if (dx < 0) {
+    tCandidates.push((minX - center.x) / dx);
+  }
+  if (dy > 0) {
+    tCandidates.push((maxY - center.y) / dy);
+  } else if (dy < 0) {
+    tCandidates.push((minY - center.y) / dy);
+  }
+
+  const t = Math.min(...tCandidates.filter(val => val >= 0));
+  x = center.x + t * dx;
+  y = center.y + t * dy;
+
+  // Post-clamp Y coordinates to strictly prevent corner overlaps with the header & footer card
+  y = Math.max(minY, Math.min(maxY, y));
+
+  const angle = Math.atan2(dx, -dy) * 180 / Math.PI;
+  return { x, y, angle };
+}
+
+function updateOffscreenIndicators() {
+  const container = document.getElementById('offscreen-indicators');
+  if (!container) return;
+
+  if (!map || currentGameMode !== 'golf' || !currentGolfState) {
+    document.getElementById('indicator-self').style.display = 'none';
+    document.getElementById('indicator-ball').style.display = 'none';
+    document.getElementById('indicator-hole').style.display = 'none';
+    return;
+  }
+
+  const bounds = map.getBounds();
+  const mapSize = map.getSize();
+  const centerPoint = L.point(mapSize.x / 2, mapSize.y / 2);
+
+  function checkAndPosition(lat, lng, elementId, onClickAction) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
+    if (lat === 0 || lng === 0) {
+      el.style.display = 'none';
+      return;
+    }
+
+    const latlng = L.latLng(lat, lng);
+    if (bounds.contains(latlng)) {
+      el.style.display = 'none';
+      return;
+    }
+
+    const targetPoint = map.latLngToContainerPoint(latlng);
+    const { x, y, angle } = getScreenBorderIntersection(centerPoint, targetPoint, mapSize.x, mapSize.y, 25);
+
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    el.style.display = 'flex';
+
+    const arrow = el.querySelector('.indicator-arrow');
+    if (arrow) {
+      arrow.style.transform = `rotate(${angle}deg)`;
+    }
+
+    el.onclick = (e) => {
+      e.stopPropagation();
+      onClickAction();
+    };
+  }
+
+  checkAndPosition(myLat, myLng, 'indicator-self', () => {
+    map.setView([myLat, myLng], 18);
+  });
+
+  checkAndPosition(currentGolfState.ballLat, currentGolfState.ballLng, 'indicator-ball', () => {
+    map.setView([currentGolfState.ballLat, currentGolfState.ballLng], 18);
+  });
+
+  checkAndPosition(currentGolfState.holeLat, currentGolfState.holeLng, 'indicator-hole', () => {
+    map.setView([currentGolfState.holeLat, currentGolfState.holeLng], 18);
+  });
 }
 
 /**
@@ -1044,11 +1179,12 @@ function onDeviceOrientation(event) {
 
   // Update own marker heading immediately on the map for responsive rotation
   if (map && myMarker) {
+    const size = getCurrentMarkerSize();
     const blueDotIcon = L.divIcon({
       className: 'custom-player-pin',
-      html: getPlayerIconHtml('#6366f1', myHeading),
-      iconSize: [24, 24],
-      iconAnchor: [12, 12]
+      html: getPlayerIconHtml('#6366f1', myHeading, size),
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2]
     });
     myMarker.setIcon(blueDotIcon);
   }
