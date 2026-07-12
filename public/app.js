@@ -385,12 +385,15 @@ socket.on('game-tick', (data) => {
   const initialTime = 900;
   if (data.timeLeft > (2 / 3) * initialTime) {
     gameTimer.style.color = '#10b981'; // Green (first third)
+    gameTimer.style.textShadow = '0 0 8px rgba(16, 185, 129, 0.3)';
     gameTimer.style.animation = '';
   } else if (data.timeLeft >= (1 / 3) * initialTime) {
     gameTimer.style.color = '#f59e0b'; // Yellow (middle third)
+    gameTimer.style.textShadow = '0 0 8px rgba(245, 158, 11, 0.3)';
     gameTimer.style.animation = '';
   } else {
     gameTimer.style.color = '#ef4444'; // Red (final third)
+    gameTimer.style.textShadow = '0 0 8px rgba(239, 68, 68, 0.3)';
     if (data.timeLeft <= 60) {
       gameTimer.style.animation = 'pulse 1s infinite'; // Critical warning
     } else {
@@ -643,10 +646,10 @@ function updateBuildingPins() {
     });
     golfHoleMarker = L.marker([currentGolfState.holeLat, currentGolfState.holeLng], { icon: holeIcon }).addTo(map);
 
-    const ballIcon = L.divIcon({
-      className: 'map-pin-container',
-      html: getBuildingPinHtml('#ffffff', '⚪ Ball'),
-      iconSize: [30, 42], iconAnchor: [15, 42]
+    const ballIcon = L.icon({
+      iconUrl: '/images/golf_ball.png',
+      iconSize: [22, 22],
+      iconAnchor: [11, 11]
     });
     golfBallMarker = L.marker([currentGolfState.ballLat, currentGolfState.ballLng], { icon: ballIcon }).addTo(map);
     return;
