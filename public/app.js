@@ -70,6 +70,7 @@ let ballGlideTargetLng = 0;
 let ballGlideStartTime = 0;
 let ballGlideAnimFrame = null;
 let ballGlideDurationMs = 1800; // dynamic glide time based on hit distance
+let ballGlideShouldFollow = false;
 
 // Opponent marker smoothing state
 let oppTargetLat = 0;
@@ -352,7 +353,7 @@ socket.on('golf-state-update', (data) => {
       
       const roundedStrength = Math.round(data.distance || 0);
       const roundedBearing = Math.round(data.heading || 0);
-      showEventBanner(`BALL HIT! Strength: ${roundedStrength}%, Bearing: ${roundedBearing}°`, 'system');
+      showEventBanner(`HIT! Strength: ${roundedStrength}%, Bearing: ${roundedBearing}°`, 'system');
       
       if (prevBallPos && (prevBallPos[0] !== newPos[0] || prevBallPos[1] !== newPos[1])) {
         startBallGlide(oldPos, newPos, data.distance || 0);
@@ -1470,6 +1471,7 @@ function startBallGlide(fromArray, toArray, distance = 0) {
   ballGlideTargetLat = toArray[0];
   ballGlideTargetLng = toArray[1];
   ballGlideStartTime = performance.now();
+  ballGlideShouldFollow = false; // reset follow flag
 
   // Clear any existing active trail leftovers
   if (window._activeMainWedge && map) {
@@ -1526,6 +1528,19 @@ function animateBallGlide() {
   const myBallMarker = ballMarkers[socket.id];
   if (myBallMarker) {
     myBallMarker.setLatLng(currentPos);
+  }
+
+  // Smoothly move the camera to follow the ball if it flies off-screen
+  if (map) {
+    if (!ballGlideShouldFollow) {
+      const bounds = map.getBounds();
+      if (!bounds.contains(currentPos)) {
+        ballGlideShouldFollow = true;
+      }
+    }
+    if (ballGlideShouldFollow) {
+      map.setView(currentPos, map.getZoom(), { animate: false });
+    }
   }
 
   // Dynamic opacity decay during the final 30% of flight to transition smoothly into landing
