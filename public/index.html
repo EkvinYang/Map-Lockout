@@ -1,36 +1,39 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Campus Golf - GPS Sports Battle</title>
-  
+
   <!-- SEO & Mobile Config -->
-  <meta name="description" content="A real-time competitive campus multiplayer GPS golf game. Swing your phone and reach the hole!">
+  <meta name="description"
+    content="A real-time competitive campus multiplayer GPS golf game. Swing your phone and reach the hole!">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  
+
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
-  
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+    rel="stylesheet">
+
   <!-- Leaflet Map CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-     crossorigin=""/>
-  
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
   <!-- Custom Stylesheet -->
   <link rel="stylesheet" href="/style.css">
-  
+
   <!-- Socket.io -->
   <script src="/socket.io/socket.io.js"></script>
-  
+
   <!-- Leaflet Map JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-     crossorigin=""></script>
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 </head>
+
 <body>
 
   <!-- The Fullscreen Leaflet Map (shared background) -->
@@ -54,19 +57,20 @@
         <button id="btn-create-lobby" class="btn btn-accent">
           Create New Lobby
         </button>
-        
+
         <div class="or-divider">Or join a friend's</div>
-        
+
         <div class="input-group">
-          <input type="text" id="join-code" placeholder="Enter Room Code (4 digits)" maxlength="4" style="text-align: center; text-transform: uppercase;">
+          <input type="text" id="join-code" placeholder="Enter Room Code (4 digits)" maxlength="4"
+            style="text-align: center; text-transform: uppercase;">
         </div>
-        
+
         <button id="btn-join-lobby" class="btn btn-secondary">
           Join Lobby
         </button>
 
         <div class="or-divider">Or test alone</div>
-        
+
         <button id="btn-test-solo" class="btn btn-warning-glow">
           Test Game (Solo)
         </button>
@@ -180,7 +184,8 @@
 
     <!-- Golf Swing Button Overlay -->
     <div class="btn-swing-wrapper" id="swing-wrapper">
-      <button class="btn btn-warning-glow" id="btn-swing-action" style="font-size: 1.5rem; padding: 15px 40px; border-radius: 30px;">
+      <button class="btn btn-warning-glow" id="btn-swing-action"
+        style="font-size: 1.5rem; padding: 15px 40px; border-radius: 30px;">
         SWING
       </button>
     </div>
@@ -218,17 +223,56 @@
     <div class="dialog-card">
       <div class="logo-container">
         <h2 id="dialog-header-title" class="dialog-title dialog-winner">GOLF MATCH COMPLETE</h2>
-        <p id="dialog-sub-title">Final Swing Results</p>
+        <p id="dialog-sub-title" style="color: var(--text-muted); font-size: 0.9rem;">Final Swing Results</p>
       </div>
 
-      <div class="dialog-score-box">
+      <!-- Stats Grid (Par, Strokes, Vs Par, Time) -->
+      <div class="dialog-stats-grid">
+        <div class="stat-card">
+          <span class="stat-label">Par</span>
+          <span id="final-par" class="stat-value font-space">3</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Strokes</span>
+          <span id="final-strokes" class="stat-value font-space">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Vs Par</span>
+          <span id="final-vs-par" class="stat-value font-space">E</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Time</span>
+          <span id="final-time" class="stat-value font-space">0:00</span>
+        </div>
+      </div>
+
+      <!-- Multiplayer Score Box -->
+      <div class="dialog-score-box" id="dialog-multiplayer-scores" style="display: none; grid-template-columns: 1fr 1fr; margin-top: 5px; margin-bottom: 5px;">
         <div>
           <h4 style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase;">You</h4>
-          <span id="final-score-me" class="font-space" style="font-size: 1.8rem; font-weight: 700; color: #818cf8;">0</span>
+          <span id="final-score-me" class="font-space"
+            style="font-size: 1.8rem; font-weight: 700; color: #818cf8;">0</span>
         </div>
         <div>
           <h4 style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase;">Opponent</h4>
-          <span id="final-score-opp" class="font-space" style="font-size: 1.8rem; font-weight: 700; color: #f472b6;">0</span>
+          <span id="final-score-opp" class="font-space"
+            style="font-size: 1.8rem; font-weight: 700; color: #f472b6;">0</span>
+        </div>
+      </div>
+
+      <!-- AI Grade Section -->
+      <div id="ai-grade-container" class="ai-grade-container">
+        <div id="grade-loading" class="grade-loading">
+          <div class="grade-spinner"></div>
+          <span>Consulting Gemini Golf Pro...</span>
+        </div>
+        <div id="grade-result" class="grade-result" style="display: none;">
+          <div class="grade-badge-wrapper">
+            <span id="grade-score" class="grade-score-val font-space">A</span>
+          </div>
+          <div class="grade-commentary-wrapper">
+            <p id="grade-commentary" class="grade-commentary-text">Evaluating performance...</p>
+          </div>
         </div>
       </div>
 
@@ -245,4 +289,5 @@
   <!-- Client Application Logic -->
   <script src="/app.js"></script>
 </body>
+
 </html>

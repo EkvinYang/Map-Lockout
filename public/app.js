@@ -130,6 +130,17 @@ const dialogResultText = document.getElementById('dialog-result-text');
 const btnDialogClose = document.getElementById('btn-dialog-close');
 const btnTestSolo = document.getElementById('btn-test-solo');
 
+const finalPar = document.getElementById('final-par');
+const finalStrokes = document.getElementById('final-strokes');
+const finalVsPar = document.getElementById('final-vs-par');
+const finalTime = document.getElementById('final-time');
+const dialogMultiplayerScores = document.getElementById('dialog-multiplayer-scores');
+const aiGradeContainer = document.getElementById('ai-grade-container');
+const gradeLoading = document.getElementById('grade-loading');
+const gradeResult = document.getElementById('grade-result');
+const gradeScore = document.getElementById('grade-score');
+const gradeCommentary = document.getElementById('grade-commentary');
+
 // --- Screen Navigation ---
 function showScreen(screenId) {
   lobbyScreen.classList.remove('active');
@@ -478,28 +489,59 @@ socket.on('location-broadcast', (data) => {
 // Game state updates removed for Campus Golf mode
 
 socket.on('game-over', (data) => {
-  const { players: finalPlayers, winnerId, reason } = data;
+  const { players: finalPlayers, winnerId, reason, stats } = data;
   const me = finalPlayers[socket.id];
   const oppId = Object.keys(finalPlayers).find(id => id !== socket.id);
   const opp = oppId ? finalPlayers[oppId] : null;
   const isSolo = Object.keys(finalPlayers).length === 1;
 
-  finalScoreMe.textContent = `${me ? me.swings : 0} Swings`;
-  dialogSubTitle.textContent = `Reason: ${reason}`;
+  const strokes = me ? me.swings : 0;
+  const par = stats ? stats.par : 3;
+  const vsPar = strokes - par;
+  const timeElapsed = stats ? stats.timeElapsed : 0;
+  const distance = stats ? stats.holeDistance : 500;
 
-  const dialogScoreBoxDivs = document.querySelectorAll('.dialog-score-box > div');
+  // Format time taken
+  const minutes = Math.floor(timeElapsed / 60);
+  const seconds = timeElapsed % 60;
+  const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  const timeText = `${minutes}m ${seconds}s`;
+
+  // Update Stats Grid
+  if (finalPar) finalPar.textContent = par;
+  if (finalStrokes) finalStrokes.textContent = strokes;
+  if (finalVsPar) {
+    if (vsPar > 0) {
+      finalVsPar.textContent = `+${vsPar}`;
+      finalVsPar.style.color = '#ef4444'; // Red for over par
+    } else if (vsPar < 0) {
+      finalVsPar.textContent = `${vsPar}`;
+      finalVsPar.style.color = '#10b981'; // Green for under par
+    } else {
+      finalVsPar.textContent = 'E';
+      finalVsPar.style.color = '#f59e0b'; // Yellow/Amber for even par
+    }
+  }
+  if (finalTime) finalTime.textContent = timeStr;
+
+  // Update multiplayer scoreboard
+  if (dialogMultiplayerScores) {
+    if (isSolo) {
+      dialogMultiplayerScores.style.display = 'none';
+    } else {
+      dialogMultiplayerScores.style.display = 'grid';
+      if (finalScoreMe) finalScoreMe.textContent = `${strokes}`;
+      if (finalScoreOpp) finalScoreOpp.textContent = `${opp ? opp.swings : 0}`;
+    }
+  }
+
+  // Set header & victory description
+  dialogSubTitle.textContent = `Reason: ${reason}`;
   if (isSolo) {
-    if (dialogScoreBoxDivs[1]) dialogScoreBoxDivs[1].style.display = 'none';
-    
     dialogHeaderTitle.textContent = "⛳ HOLE IN!";
     dialogHeaderTitle.className = "dialog-title dialog-winner";
-    dialogResultText.textContent = `You finished the hole in ${me ? me.swings : 0} swings!`;
+    dialogResultText.textContent = `You completed the course in ${strokes} swings!`;
   } else {
-    if (dialogScoreBoxDivs[1]) {
-      dialogScoreBoxDivs[1].style.display = 'block';
-      finalScoreOpp.textContent = `${opp ? opp.swings : 0} Swings`;
-    }
-    
     if (winnerId === 'tie') {
       dialogHeaderTitle.textContent = "IT'S A DRAW!";
       dialogHeaderTitle.className = "dialog-title";
@@ -515,7 +557,46 @@ socket.on('game-over', (data) => {
     }
   }
 
+  // Display dialog
   dialogOverlay.style.display = 'flex';
+
+  // Fetch AI Grade
+  if (gradeLoading && gradeResult) {
+    gradeLoading.style.display = 'flex';
+    gradeResult.style.display = 'none';
+
+    fetch('/api/grade', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        par,
+        strokes,
+        timeTaken: timeText,
+        distance
+      })
+    })
+      .then(res => res.json())
+      .then(result => {
+        if (gradeScore) gradeScore.textContent = result.score || 'A';
+        if (gradeCommentary) gradeCommentary.textContent = result.commentary || '';
+        gradeLoading.style.display = 'none';
+        gradeResult.style.display = 'flex';
+      })
+      .catch(err => {
+        console.error('Failed to fetch AI grade:', err);
+        // Fallback grade directly on UI
+        let score = 'A';
+        if (strokes > par + 3) score = 'B';
+        if (strokes > par + 6) score = 'C';
+        if (strokes <= par - 1) score = 'S';
+        if (strokes <= par - 2) score = 'S+';
+        
+        if (gradeScore) gradeScore.textContent = score;
+        if (gradeCommentary) gradeCommentary.textContent = `Nice round! You finished in ${strokes} strokes.`;
+        gradeLoading.style.display = 'none';
+        gradeResult.style.display = 'flex';
+      });
+  }
 });
 
 // --- Waiting Room UI Helper ---
